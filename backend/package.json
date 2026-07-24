@@ -1,0 +1,14 @@
+{
+  "name": "art-history-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Self-hosted backend + content pipeline for the Art History quiz app.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "import:met": "node scripts/import_met.js",
+    "test": "node --test"
+  }
+}
