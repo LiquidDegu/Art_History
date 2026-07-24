@@ -8,7 +8,10 @@
     "node": ">=18"
   },
   "scripts": {
-    "import:met": "node scripts/import_met.js",
+    "import": "node scripts/import_content.js",
+    "import:met": "node scripts/import_content.js --sources=met",
+    "import:cleveland": "node scripts/import_content.js --sources=cleveland",
+    "import:artic": "node scripts/import_content.js --sources=artic",
     "test": "node --test"
   }
 }

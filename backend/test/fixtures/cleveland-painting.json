@@ -1,0 +1,26 @@
+{
+  "id": 129857,
+  "share_license_status": "CC0",
+  "title": "The Red Kerchief: Portrait of Mrs. Monet",
+  "creation_date": "1873",
+  "creation_date_earliest": 1868,
+  "creation_date_latest": 1878,
+  "department": "Modern European Painting and Sculpture",
+  "type": "Painting",
+  "technique": "oil on canvas",
+  "tombstone": "Claude Monet (French, 1840-1926), The Red Kerchief: Portrait of Mrs. Monet, 1873",
+  "creators": [
+    {
+      "description": "Claude Monet (French, 1840-1926)",
+      "role": "artist",
+      "birth_year": "1840",
+      "death_year": "1926"
+    }
+  ],
+  "images": {
+    "web": {
+      "url": "https://openaccess-api.clevelandart.org/example/web.jpg"
+    }
+  },
+  "url": "https://www.clevelandart.org/art/1958.39"
+}

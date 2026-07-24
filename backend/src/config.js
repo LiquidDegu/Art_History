@@ -1,26 +1,24 @@
-// Tunable defaults for the Met Museum content pipeline.
+// Tunable defaults for the content pipeline, shared across all museum sources.
 // Per project-plan.md Section 6, game-balance numbers live in a config module;
 // the same principle applies here to pipeline knobs (sample size, rate limiting).
 
-export const MET_API_BASE = "https://collectionapi.metmuseum.org/public/collection/v1";
-
 // Era ids/names/ranges mirror ERAS in docs/art-history-app-prototype.jsx so the
 // content pipeline's "epoch" categories line up with the UI reference.
-// departmentIds narrow the Met API search per era; Renaissance/Baroque/
-// Impressionism share European Paintings & Sculpture departments and are
-// split apart by object date range instead (see classify.js#eraForDateRange).
+// Source-specific department/classification mappings used to narrow queries
+// per era live alongside each source's client in src/sources/, since they're
+// specific to that museum's API, not shared.
 export const ERAS = [
-  { id: "ancient", name: "Antiquity", dateBegin: -3000, dateEnd: 400, departmentIds: [3, 10, 13] },
-  { id: "medieval", name: "Medieval", dateBegin: 500, dateEnd: 1400, departmentIds: [7, 17] },
-  { id: "renaissance", name: "Renaissance", dateBegin: 1400, dateEnd: 1600, departmentIds: [11, 12] },
-  { id: "baroque", name: "Baroque", dateBegin: 1600, dateEnd: 1750, departmentIds: [11, 12] },
-  { id: "impressionism", name: "Impressionism", dateBegin: 1860, dateEnd: 1900, departmentIds: [11] },
-  { id: "modern", name: "Modern", dateBegin: 1900, dateEnd: new Date().getFullYear(), departmentIds: [21] },
+  { id: "ancient", name: "Antiquity", dateBegin: -3000, dateEnd: 400 },
+  { id: "medieval", name: "Medieval", dateBegin: 500, dateEnd: 1400 },
+  { id: "renaissance", name: "Renaissance", dateBegin: 1400, dateEnd: 1600 },
+  { id: "baroque", name: "Baroque", dateBegin: 1600, dateEnd: 1750 },
+  { id: "impressionism", name: "Impressionism", dateBegin: 1860, dateEnd: 1900 },
+  { id: "modern", name: "Modern", dateBegin: 1900, dateEnd: new Date().getFullYear() },
 ];
 
 export const CATEGORY_TYPES = ["epoch", "style", "location", "theme"];
 
-// Best-effort style detection against Met's free-text `period` field.
+// Best-effort style detection against each source's free-text style/period field.
 // Only tags a style when one of these known values (Section 5's example list) appears.
 export const STYLE_KEYWORDS = [
   "High Renaissance",
@@ -41,7 +39,7 @@ export const STYLE_KEYWORDS = [
   "Romanesque",
 ];
 
-// Best-effort theme detection against title + Met's `tags[].term` list.
+// Best-effort theme detection against title + whatever tag-like text a source provides.
 export const THEME_KEYWORDS = {
   Portrait: ["portrait"],
   Landscape: ["landscape"],
@@ -59,19 +57,11 @@ export const MEDIUM_MAP = [
   { match: /oil|tempera|canvas|panel|paint|gouache|watercolor/i, value: "painting" },
 ];
 
-export const LICENSE = {
-  license_type: "CC0",
-  license_url: "https://www.metmuseum.org/policies/open-access",
-  rights_source: "Metropolitan Museum of Art — Open Access API",
-};
-
-export const LOCATION_NAME = "Metropolitan Museum of Art";
-
 // Section 7: exclude works by artists who died too recently to be safely public
-// domain, even if the source API flags the record isPublicDomain. Defense in
-// depth on top of Met's own flag, not a replacement for it.
+// domain, even if a source API flags the record isPublicDomain. Defense in
+// depth on top of each source's own flag, not a replacement for it.
 export const COPYRIGHT_SAFE_YEARS = 70;
 
-export const MAX_OBJECTS_PER_ERA = 60;
+export const MAX_OBJECTS_PER_ERA_PER_SOURCE = 40;
 export const REQUEST_CONCURRENCY = 5;
 export const REQUEST_DELAY_MS = 150;

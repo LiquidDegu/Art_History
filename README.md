@@ -10,11 +10,13 @@ the plan's Section 0).
 
 ## Status
 
-Build Roadmap Step 1 only (see plan Section 9): the [Met Museum content
+Build Roadmap Step 1 only (see plan Section 9): the [content
 pipeline](backend/README.md) that pulls and normalizes a public-domain
-artwork sample into the plan's Section 5 data model. Nothing from later steps
-(app shell, local persistence, PocketBase backend, auth, push notifications,
-monetization) has been started yet.
+artwork sample into the plan's Section 5 data model, currently from three of
+the plan's six named CC0 sources (Met, Cleveland, Art Institute of Chicago —
+see `backend/README.md` for why Smithsonian/NGA/Getty aren't wired up yet).
+Nothing from later steps (app shell, local persistence, PocketBase backend,
+auth, push notifications, monetization) has been started yet.
 
 ## Layout
 

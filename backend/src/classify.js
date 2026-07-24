@@ -25,23 +25,21 @@ export function eraForDateRange(begin, end) {
   return best;
 }
 
-export function isLikelyStillInCopyright(artistEndDate) {
-  const deathYear = parseYear(artistEndDate);
-  if (deathYear === null) return false; // unknown death year: defer to the source API's own flag
+// deathYear is a plain number|null (already parsed by the calling source adapter).
+export function isLikelyStillInCopyright(deathYear) {
+  if (deathYear === null || deathYear === undefined) return false; // unknown death year: defer to the source API's own flag
   return new Date().getFullYear() - deathYear < COPYRIGHT_SAFE_YEARS;
 }
 
-export function detectStyle(period) {
-  if (!period) return null;
-  const lower = period.toLowerCase();
+export function detectStyle(text) {
+  if (!text) return null;
+  const lower = text.toLowerCase();
   return STYLE_KEYWORDS.find((kw) => lower.includes(kw.toLowerCase())) ?? null;
 }
 
-export function detectTheme({ title, tags }) {
-  const haystack = [title, ...(tags || []).map((t) => t.term)]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+export function detectTheme(text) {
+  if (!text) return null;
+  const haystack = text.toLowerCase();
   for (const [theme, keywords] of Object.entries(THEME_KEYWORDS)) {
     if (keywords.some((kw) => haystack.includes(kw))) return theme;
   }

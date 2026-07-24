@@ -1,72 +1,77 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { isEligible, getOrCreateArtist, buildArtwork, categoriesForArtwork } from "../src/normalize.js";
-import { eraForDateRange, parseYear } from "../src/classify.js";
+import { ERAS } from "../src/config.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LICENSE = { license_type: "CC0", license_url: "https://example.org/cc0", rights_source: "Example Museum" };
 
-function fixture(name) {
-  return JSON.parse(readFileSync(path.join(__dirname, "fixtures", name), "utf8"));
+function makeItem(overrides = {}) {
+  return {
+    sourceId: "met",
+    externalId: 123,
+    isPublicDomain: true,
+    imageUrl: "https://example.org/image.jpg",
+    title: "Portrait of a Lady",
+    artistName: "Sandro Botticelli",
+    artistBirthYear: 1445,
+    artistDeathYear: 1510,
+    artistNationality: "Italian",
+    dateBegin: 1478,
+    dateEnd: 1482,
+    mediumText: "Tempera on panel",
+    styleText: "Early Renaissance",
+    themeText: "Portrait of a Lady",
+    license: LICENSE,
+    locationName: "Example Museum",
+    ...overrides,
+  };
 }
 
-test("eligible public-domain Renaissance painting normalizes correctly", () => {
-  const raw = fixture("renaissance-painting.json");
-  assert.equal(isEligible(raw), true);
+test("isEligible requires public domain flag, an image, and an id", () => {
+  assert.equal(isEligible(makeItem()), true);
+  assert.equal(isEligible(makeItem({ isPublicDomain: false })), false);
+  assert.equal(isEligible(makeItem({ imageUrl: null })), false);
+  assert.equal(isEligible(makeItem({ externalId: null })), false);
+});
 
-  const era = eraForDateRange(parseYear(raw.objectBeginDate), parseYear(raw.objectEndDate));
-  assert.equal(era.id, "renaissance");
+test("isEligible excludes artists who died too recently even if flagged public domain", () => {
+  assert.equal(isEligible(makeItem({ artistDeathYear: 2016 })), false);
+});
 
+test("getOrCreateArtist dedupes by display name and reuses the same record", () => {
   const artists = new Map();
-  const artist = getOrCreateArtist(raw, artists);
-  assert.equal(artist.name, "Sandro Botticelli");
-  assert.equal(artist.birth_year, 1445);
-  assert.equal(artist.death_year, 1510);
+  const a = getOrCreateArtist(makeItem(), artists);
+  const b = getOrCreateArtist(makeItem({ sourceId: "cleveland", externalId: 456 }), artists);
+  assert.equal(a.id, b.id);
+  assert.equal(artists.size, 1);
+});
 
-  const artwork = buildArtwork(raw, artist);
+test("getOrCreateArtist falls back to 'Unknown' when no artist name is given", () => {
+  const artist = getOrCreateArtist(makeItem({ artistName: null }), new Map());
+  assert.equal(artist.name, "Unknown");
+});
+
+test("buildArtwork stamps license fields and prefixes source_api_id by source", () => {
+  const item = makeItem();
+  const artist = getOrCreateArtist(item, new Map());
+  const artwork = buildArtwork(item, artist);
+  assert.equal(artwork.source_api_id, "met:123");
   assert.equal(artwork.license_type, "CC0");
-  assert.equal(artwork.source_api_id, "999001");
   assert.equal(artwork.medium, "painting");
   assert.equal(artwork.artist_id, artist.id);
+});
 
-  const categories = categoriesForArtwork(raw, era);
+test("categoriesForArtwork always includes epoch and location, plus style/theme when detected", () => {
+  const era = ERAS.find((e) => e.id === "renaissance");
+  const categories = categoriesForArtwork(makeItem(), era);
   assert.ok(categories.some((c) => c.type === "epoch" && c.name === "Renaissance"));
-  assert.ok(categories.some((c) => c.type === "location" && c.name === "Metropolitan Museum of Art"));
+  assert.ok(categories.some((c) => c.type === "location" && c.name === "Example Museum"));
   assert.ok(categories.some((c) => c.type === "style" && c.name === "Early Renaissance"));
   assert.ok(categories.some((c) => c.type === "theme" && c.name === "Portrait"));
 });
 
-test("ancient sculpture with no listed artist falls back to 'Unknown'", () => {
-  const raw = fixture("ancient-sculpture.json");
-  assert.equal(isEligible(raw), true);
-
-  const era = eraForDateRange(parseYear(raw.objectBeginDate), parseYear(raw.objectEndDate));
-  assert.equal(era.id, "ancient");
-
-  const artist = getOrCreateArtist(raw, new Map());
-  assert.equal(artist.name, "Unknown");
-
-  const artwork = buildArtwork(raw, artist);
-  assert.equal(artwork.medium, "sculpture");
-});
-
-test("artist who died recently is excluded even when the source flags public domain", () => {
-  const raw = fixture("modern-recent-artist.json");
-  assert.equal(isEligible(raw), false);
-});
-
-test("object not flagged public domain is excluded", () => {
-  const raw = { ...fixture("renaissance-painting.json"), isPublicDomain: false };
-  assert.equal(isEligible(raw), false);
-});
-
-test("artist lookups dedupe by name across artworks", () => {
-  const raw = fixture("renaissance-painting.json");
-  const artists = new Map();
-  const first = getOrCreateArtist(raw, artists);
-  const second = getOrCreateArtist(raw, artists);
-  assert.equal(first.id, second.id);
-  assert.equal(artists.size, 1);
+test("categoriesForArtwork omits style/theme when nothing matches", () => {
+  const era = ERAS.find((e) => e.id === "ancient");
+  const categories = categoriesForArtwork(makeItem({ styleText: "", themeText: "Untitled object" }), era);
+  assert.equal(categories.length, 2);
 });

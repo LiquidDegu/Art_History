@@ -31,21 +31,21 @@ test("detectMedium maps free-text medium strings to the known enum", () => {
   assert.equal(detectMedium(""), "other");
 });
 
-test("detectStyle only tags known style keywords found in the period field", () => {
+test("detectStyle only tags known style keywords found in free text", () => {
   assert.equal(detectStyle("Early Renaissance"), "Early Renaissance");
   assert.equal(detectStyle("Some unrecognized period label"), null);
   assert.equal(detectStyle(""), null);
 });
 
-test("detectTheme matches against title and tag terms", () => {
-  assert.equal(detectTheme({ title: "Portrait of a Lady", tags: [] }), "Portrait");
-  assert.equal(detectTheme({ title: "Untitled", tags: [{ term: "Landscape" }] }), "Landscape");
-  assert.equal(detectTheme({ title: "Still Life with Apples", tags: [] }), "Still Life");
-  assert.equal(detectTheme({ title: "Abstract Composition No. 4", tags: [] }), null);
+test("detectTheme matches keywords against a single combined text field", () => {
+  assert.equal(detectTheme("Portrait of a Lady"), "Portrait");
+  assert.equal(detectTheme("Untitled Landscape"), "Landscape");
+  assert.equal(detectTheme("Still Life with Apples"), "Still Life");
+  assert.equal(detectTheme("Abstract Composition No. 4"), null);
 });
 
 test("isLikelyStillInCopyright flags recently-deceased artists and defers when death year is unknown", () => {
-  assert.equal(isLikelyStillInCopyright("2016"), true);
-  assert.equal(isLikelyStillInCopyright("1900"), false);
-  assert.equal(isLikelyStillInCopyright(""), false);
+  assert.equal(isLikelyStillInCopyright(2016), true);
+  assert.equal(isLikelyStillInCopyright(1900), false);
+  assert.equal(isLikelyStillInCopyright(null), false);
 });
