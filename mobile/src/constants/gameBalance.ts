@@ -4,3 +4,7 @@
 
 export const HEARTS_START = 3;
 export const XP_PER_CORRECT = 15;
+
+// Section 2: "close app → optional push notification later in the day if
+// the streak is still unclaimed." Local device time, 24h clock.
+export const STREAK_REMINDER_HOUR = 20;

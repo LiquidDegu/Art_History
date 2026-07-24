@@ -20,13 +20,38 @@ and quizzes, from Antiquity to Modern/Contemporary.
 docs/                 product plan + reference UI prototype
 backend/               content pipeline (Step 1)
 backend/pocketbase/     self-hosted PocketBase backend, sync queue, auth + anti-cheat (Steps 4-6)
-mobile/                Expo React Native app (Steps 2-6)
+mobile/                Expo React Native app (Steps 2-7)
 ```
 
 ## Progress
 
 Following the plan's Section 0 rule to build in the order given in Section 9
 (Build Roadmap), one step at a time.
+
+### Build Roadmap Step 7 — Push notifications (done)
+
+Local scheduled notifications (`mobile/src/notifications/streakReminder.ts`),
+implementing Section 2's "close app → optional push notification later in
+the day if the streak is still unclaimed" — not remote/server-sent push.
+
+- Backgrounding the app with today's streak still unclaimed schedules a
+  one-time local reminder for that evening (default 8pm local, tunable);
+  completing a room cancels it. No backend changes — this is entirely a
+  device-local feature.
+- **Deliberately local, not remote:** the actual described need doesn't
+  require a server round-trip, push-token registration, or an Expo/EAS
+  account. A server-initiated re-engagement campaign to lapsed users would
+  be a different, bigger feature Section 9's one-line description doesn't
+  ask for.
+- **What's verified vs. not:** the code is written directly against
+  `expo-notifications`' documented API (checked against the installed
+  package's own type definitions, not guessed), and playing a full room
+  plus simulated background/foreground transitions in a headless browser
+  produced zero errors — but `expo-notifications`' scheduling API has no
+  web implementation to actually exercise, and no iOS/Android
+  device/simulator was available in this sandbox to confirm a real
+  notification fires correctly. This is the one piece of Step 7 that's
+  genuinely untested end-to-end; see `mobile/README.md` for detail.
 
 ### Build Roadmap Step 6 — Gamification hardening (done)
 
@@ -224,7 +249,9 @@ epoch, style, location, and theme.
 
 ### Not started yet
 
-Steps 7–9 of the roadmap, in order: push notifications, TestFlight/internal
-testing, and the optional PostHog analytics upgrade. Monetization
-(Section 8) and the daily play limiter are explicitly deferred in the plan
-itself and untouched here.
+Steps 8–9 of the roadmap: TestFlight/internal testing, and the optional
+PostHog analytics upgrade. Both need things only you hold (an Apple/Google
+developer account for Step 8; a decision on whether Step 9 is worth doing
+at all, since the plan marks it optional/later) — see those steps' notes
+when we get there. Monetization (Section 8 of the plan) and the daily play
+limiter are explicitly deferred in the plan itself and untouched here.

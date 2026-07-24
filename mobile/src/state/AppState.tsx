@@ -4,6 +4,7 @@ import * as authClient from '../auth/authClient';
 import type { AuthSession } from '../auth/authClient';
 import { HEARTS_START, XP_PER_CORRECT } from '../constants/gameBalance';
 import { getProgress, getUser, initDatabase, logEvent, persistRoomCompletion } from '../db/database';
+import { cancelStreakReminder, scheduleStreakReminderIfNeeded } from '../notifications/streakReminder';
 import { syncNow } from '../sync/syncQueue';
 import type { EraId } from '../types/content';
 import type { ProgressRow } from '../types/db';
@@ -26,6 +27,11 @@ import type { ProgressRow } from '../types/db';
 // "adopt" case in authClient's module comment), so those calls reload
 // local state into this context afterwards rather than assuming nothing
 // changed.
+//
+// Build Roadmap Step 7: backgrounding the app with today's streak still
+// unclaimed schedules a local reminder notification for later tonight
+// (../notifications/streakReminder.ts); completing a room cancels it,
+// since the streak is safe again.
 
 interface QuizContext {
   eraId: EraId;
@@ -104,6 +110,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         // era_id/artwork_id double as the drop-off point (Section 5: "drop-off
         // point if a session ends mid-quiz") when the app backgrounds mid-room.
         logEvent({ eventType: 'session_end', eraId: q?.eraId ?? null, artworkId: q?.artworkId ?? null });
+        getUser().then((user) => scheduleStreakReminderIfNeeded(user.streak, user.lastActiveDate));
       } else if (next === 'active') {
         logEvent({ eventType: 'session_start' });
         void syncNow();
@@ -143,6 +150,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
         await logEvent({ eventType: 'room_completed', eraId });
         void syncNow();
+        void cancelStreakReminder();
         return xpGained;
       },
       logQuestionAnswered: (eraId, artworkId, correct, timeToAnswerMs) => {

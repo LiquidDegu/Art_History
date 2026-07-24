@@ -1,10 +1,12 @@
 # mobile
 
-The Expo (React Native + TypeScript) app — Build Roadmap Steps 2-6 from
+The Expo (React Native + TypeScript) app — Build Roadmap Steps 2-7 from
 `../docs/art-history-app-project-plan.md`. Content is local; progress and
 analytics events persist to an on-device SQLite database and sync to the
 self-hosted PocketBase backend in `../backend/pocketbase/`; an optional
-email+password account (Step 5) carries that progress across devices.
+email+password account (Step 5) carries that progress across devices; a
+local notification nudges you if today's streak is still unclaimed by
+evening (Step 7).
 
 ## Running it
 
@@ -52,6 +54,7 @@ src/
   sync/syncQueue.ts         syncNow(): batch-uploads unsynced progress/events (Section 4)
   auth/session.ts          in-memory current-token holder (breaks an import cycle, see below)
   auth/authClient.ts        register/login/logout + the claim-or-adopt reconciliation (Section 5)
+  notifications/streakReminder.ts  local streak-reminder scheduling (Section 7), no-ops on web
   state/AppState.tsx       xp/streak/unlocked/progress/session context, backed by SQLite; hearts stay in-memory
   navigation/              React Navigation: bottom tabs (Path / Browse / Account), each a native stack
   screens/                 Path, Quiz, Results, BrowseHome, BrowseList, BrowseArtworks, ArtworkDetail, Account
@@ -206,6 +209,45 @@ against the newly-hardened server and seeing it pass with zero errors,
 same as before. See the backend README for what's actually checked and
 why an early version of it would have wrongly rejected legitimate
 offline-catch-up play.
+
+## Push notifications (Build Roadmap Step 7)
+
+Local scheduled notifications (`src/notifications/streakReminder.ts`), not
+remote/server-sent push, implementing Section 2's "close app → optional
+push notification later in the day if the streak is still unclaimed":
+
+- Backgrounding the app (`state/AppState.tsx`'s `AppState` listener) checks
+  whether today's streak is already claimed; if not, and it isn't already
+  past the reminder hour (`STREAK_REMINDER_HOUR`, `constants/gameBalance.ts`,
+  defaults to 20:00 local), it requests notification permission (if not
+  already granted) and schedules a one-time local notification for that
+  time. Completing a room cancels any pending reminder immediately, since
+  the streak is safe again.
+- **Local, not remote, on purpose.** The actual product need here doesn't
+  require a server round-trip at all — no push-token registration, no
+  Expo/EAS account, nothing added to the backend. A *re-engagement*
+  campaign (server-initiated push to lapsed users who haven't opened the
+  app in days) would be a materially different, bigger feature; nothing in
+  Section 9 Step 7's one-line description asks for that, so it wasn't
+  built speculatively.
+- **Why this couldn't be fully verified here:** `expo-notifications`'
+  *scheduling* API has no web equivalent (no OS-level scheduler without a
+  real Web Push + service-worker setup, which is a different mechanism
+  entirely) — every exported function in `streakReminder.ts` no-ops on
+  web rather than throwing, confirmed by playing a full room and
+  triggering simulated background/foreground transitions in a headless
+  browser session with zero errors. What that test *couldn't* confirm is
+  whether a real notification actually fires and looks right on an
+  iOS/Android device or simulator — none was available in this sandbox.
+  The code is written directly against `expo-notifications`' documented
+  API (verified against the installed package's own type definitions and
+  doc-comment examples, not guessed), the same rigor as everything else in
+  this repo, but this is the one piece that's genuinely untested
+  end-to-end. Worth an explicit check on a real device before relying on it.
+- `app.json` registers the `expo-notifications` config plugin (needed so a
+  native build actually includes notification permissions/setup) —
+  confirmed `npx expo config` resolves it without error, which is as far
+  as this could be checked without doing a native build.
 
 ### expo-sqlite on web needs `metro.config.js`
 
