@@ -1,15 +1,16 @@
 # mobile
 
-The Expo (React Native + TypeScript) app — Build Roadmap Steps 2-3 from
-`../docs/art-history-app-project-plan.md`. Content is local (no backend
-yet — that's Step 4), but progress and analytics events now persist to an
-on-device SQLite database instead of resetting on every reload.
+The Expo (React Native + TypeScript) app — Build Roadmap Steps 2-4 from
+`../docs/art-history-app-project-plan.md`. Content is local; progress and
+analytics events persist to an on-device SQLite database and sync to the
+self-hosted PocketBase backend in `../backend/pocketbase/`.
 
 ## Running it
 
 ```bash
 cd mobile
 npm install
+cp .env.example .env.local   # point EXPO_PUBLIC_POCKETBASE_URL at your server
 npx expo start --web    # or --ios / --android with a simulator/device
 ```
 
@@ -25,7 +26,10 @@ Verified working: typechecks clean (`npx tsc --noEmit`), `npm test` passes
 full path → quiz → results → browse loop, **including a hard page reload
 mid-session**, was exercised end-to-end in a headless Chromium session
 (Expo web) with zero console/page errors — XP, streak, and unlocked/
-completed rooms all survived the reload correctly.
+completed rooms all survived the reload correctly. The sync queue (below)
+was verified the same way against a real local PocketBase instance, not
+just against the local database — see `../backend/pocketbase/README.md`
+for that testing story.
 
 ## What's here
 
@@ -42,6 +46,9 @@ src/
   db/schema.ts             SQLite schema: user, user_progress, events (Section 5)
   db/streak.ts             pure daily-streak-rollover logic (Section 6/2) — unit tested
   db/database.ts           expo-sqlite access layer: init, user/progress CRUD, event logging
+  sync/config.ts            PocketBase server URL (EXPO_PUBLIC_POCKETBASE_URL)
+  sync/pocketbaseClient.ts  minimal fetch wrapper around the PocketBase REST API
+  sync/syncQueue.ts         syncNow(): batch-uploads unsynced progress/events (Section 4)
   state/AppState.tsx       xp/streak/unlocked/progress context, backed by SQLite; hearts stay in-memory
   navigation/              React Navigation: bottom tabs (Path / Browse), each a native stack
   screens/                 Path, Quiz, Results, BrowseHome, BrowseList, BrowseArtworks, ArtworkDetail
@@ -107,6 +114,43 @@ what doesn't:
   stored in the `user` table; Section 10 flags whether it's ever tied to a
   real identity as an open decision this doesn't touch.
 
+## Sync queue (Build Roadmap Step 4)
+
+`src/sync/syncQueue.ts`'s `syncNow()` pushes local state to PocketBase, per
+Section 4's "queue-based... on reconnect, the app batch-uploads the queue
+to the backend; server confirms receipt; local queue clears" — triggered
+on app boot, on every foreground resume, and right after a room completes
+(see the `void syncNow()` calls in `state/AppState.tsx`). There's no
+dedicated connectivity-change listener; those three triggers cover
+"on reconnect" well enough without adding a network-status dependency.
+
+- **Idempotent by construction, not just by care.** Every record the sync
+  queue creates remembers its PocketBase-assigned id locally
+  (`user.server_id`, `user_progress.server_id`) and blind-PATCHes that id
+  on every later sync instead of searching for it — so a reload never
+  creates a duplicate `player`/`player_progress` record. Events reuse their
+  local id as `client_event_id`, which has a unique index server-side
+  (`backend/pocketbase/pb_migrations/`), so a retried upload that actually
+  succeeded the first time gets a `validation_not_unique` error back
+  instead of a duplicate row, and the client treats that as success too.
+- **Fully offline-safe.** `syncNow()` swallows every error — a dead server,
+  no network, a timeout (8s) — and just retries on the next trigger.
+  Nothing about play, scoring, or navigation ever waits on it.
+- **Verified against a real server, not mocked.** Completing a full room in
+  a headless-browser Expo session against a locally-compiled PocketBase
+  instance produced exactly the expected `player` row (xp/streak/
+  unlocked_era_index), one `player_progress` row, and 8
+  `question_answered` + 1 `room_completed` + session events — then a page
+  reload in the same browser context re-synced without creating a single
+  duplicate record. See `../backend/pocketbase/README.md`.
+- **Known gap, matching the server's:** if a device's `server_id` is lost
+  while its `device_uuid` survives, `ensurePlayerSynced()` currently just
+  skips syncing that device rather than guessing — there's no way to look
+  up "the player record for this device_uuid" without auth, since
+  `player`'s `view`/`list` rules are superuser-only by design (see the
+  backend README's security-gap section). Step 5 (Auth) is where this gets
+  a real answer.
+
 ### expo-sqlite on web needs `metro.config.js`
 
 `expo-sqlite`'s web backend (`wa-sqlite`, compiled to WASM, run in a Web
@@ -146,5 +190,6 @@ cover the logic Expo's web SQLite backend made slower to iterate on there.
   several artworks (e.g. `The School of Athens`, `Discobolus`) have no theme
   tag rather than a guessed one — same conservative-tagging principle
   `backend/README.md` describes for the pipeline.
-- No sync queue — events and progress live only on-device until Step 4
-  stands up the backend to sync against.
+- No auth yet — the sync queue is anonymous/device-scoped (Step 5).
+- No server-side validation of synced xp/streak/scores (Step 6) — the
+  server currently trusts whatever the client sends.

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { AppState as RNAppState, type AppStateStatus } from 'react-native';
 import { HEARTS_START, XP_PER_CORRECT } from '../constants/gameBalance';
 import { getProgress, getUser, initDatabase, logEvent, persistRoomCompletion } from '../db/database';
+import { syncNow } from '../sync/syncQueue';
 import type { EraId } from '../types/content';
 import type { ProgressRow } from '../types/db';
 
@@ -10,6 +11,12 @@ import type { ProgressRow } from '../types/db';
 // Hearts stay in-memory — Section 6 defines them as "3 per room attempt,"
 // not a value that needs to survive an app restart, and server-side
 // hearts regeneration is Step 6 (gamification hardening), not this step.
+//
+// Build Roadmap Step 4: that local state also gets pushed to the
+// self-hosted PocketBase backend via syncNow() (../sync/syncQueue.ts) — on
+// boot, on every foreground resume, and after each room completion. Sync
+// is fire-and-forget and never awaited by the UI: offline play must never
+// be blocked or slowed down by it.
 
 interface QuizContext {
   eraId: EraId;
@@ -58,6 +65,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       setProgress(Object.fromEntries(progressRows.map((p) => [p.eraId, p])));
       setReady(true);
       await logEvent({ eventType: 'session_start' });
+      void syncNow();
     })();
     return () => {
       cancelled = true;
@@ -73,6 +81,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         logEvent({ eventType: 'session_end', eraId: q?.eraId ?? null, artworkId: q?.artworkId ?? null });
       } else if (next === 'active') {
         logEvent({ eventType: 'session_start' });
+        void syncNow();
       }
     };
     const sub = RNAppState.addEventListener('change', handleChange);
@@ -97,12 +106,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         setUnlockedIndex(result.unlockedEraIndex);
         setProgress((prev) => ({
           ...prev,
-          [eraId]: { eraId, completed: true, bestScore: Math.max(prev[eraId]?.bestScore ?? 0, correct) },
+          [eraId]: {
+            eraId,
+            completed: true,
+            bestScore: Math.max(prev[eraId]?.bestScore ?? 0, correct),
+            serverId: prev[eraId]?.serverId ?? null,
+          },
         }));
         if (result.streakBroken) {
           await logEvent({ eventType: 'streak_broken', eraId });
         }
         await logEvent({ eventType: 'room_completed', eraId });
+        void syncNow();
         return xpGained;
       },
       logQuestionAnswered: (eraId, artworkId, correct, timeToAnswerMs) => {

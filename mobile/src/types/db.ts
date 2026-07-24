@@ -1,7 +1,5 @@
-// Local SQLite shapes — Build Roadmap Step 3. Mirrors the "User tables" and
-// "Analytics table" from project-plan.md Section 5, minus the fields that
-// only make sense once there's a server to sync against (Step 4+): no
-// synced-status flag yet, no server-assigned uuid.
+// Local SQLite shapes — Build Roadmap Steps 3-4. Mirrors the "User tables"
+// and "Analytics table" from project-plan.md Section 5.
 
 import type { EraId } from './content';
 
@@ -12,12 +10,16 @@ export interface UserRow {
   deviceUuid: string;
   premium: boolean; // unused — Section 8 gating is deferred
   unlockedEraIndex: number;
+  /** The PocketBase `player` record id, once the sync queue has created one. */
+  serverId: string | null;
 }
 
 export interface ProgressRow {
   eraId: EraId;
   completed: boolean;
   bestScore: number;
+  /** The PocketBase `player_progress` record id, once synced. */
+  serverId: string | null;
 }
 
 export type EventType =
@@ -33,4 +35,16 @@ export interface NewEvent {
   artworkId?: string | null;
   correct?: boolean | null;
   timeToAnswerMs?: number | null;
+}
+
+/** A locally-logged event not yet confirmed uploaded (events.synced = 0). */
+export interface UnsyncedEventRow {
+  id: string;
+  deviceUuid: string;
+  eventType: EventType;
+  eraId: string | null;
+  artworkId: string | null;
+  correct: boolean | null;
+  timeToAnswerMs: number | null;
+  timestamp: string;
 }

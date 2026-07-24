@@ -17,9 +17,10 @@ and quizzes, from Antiquity to Modern/Contemporary.
 ## Layout
 
 ```
-docs/     product plan + reference UI prototype
-backend/  self-hosted backend + content pipeline (Step 1)
-mobile/   Expo React Native app shell (Step 2)
+docs/                 product plan + reference UI prototype
+backend/               content pipeline (Step 1)
+backend/pocketbase/     self-hosted PocketBase backend + sync queue target (Step 4)
+mobile/                Expo React Native app (Steps 2-4)
 ```
 
 ## Progress
@@ -27,7 +28,51 @@ mobile/   Expo React Native app shell (Step 2)
 Following the plan's Section 0 rule to build in the order given in Section 9
 (Build Roadmap), one step at a time.
 
-### Build Roadmap Step 3 — Local persistence (in progress)
+### Build Roadmap Step 4 — Self-hosted backend + sync queue (in progress)
+
+A self-hosted [PocketBase](https://pocketbase.io) server (`backend/pocketbase/`)
+now receives the mobile app's progress and analytics events, per Section 4:
+"only two kinds of data ever need to leave the device: progress data...
+and analytics events."
+
+- **Runs as a single `docker compose up -d --build`** (once `.env` is filled
+  in from `.env.example`) — the image compiles PocketBase from source and
+  bakes in the binary, so there's nothing left to build at container start;
+  it applies its schema migrations and bootstraps the superuser account
+  automatically.
+- **Schema** (`backend/pocketbase/pb_migrations/`): `player` (Section 5's
+  `users` table, renamed — PocketBase reserves `users` for its own built-in
+  auth collection and this step is pre-auth), `player_progress` (Section
+  5's `user_progress`), and `events`, with a unique index on the client's
+  local event id so a retried upload can't create a duplicate.
+- **Mobile sync queue** (`mobile/src/sync/`): batch-uploads xp/streak/
+  unlocked-room progress and unsynced events on app boot, on foreground
+  resume, and after each room completion; fully offline-safe (every
+  failure is swallowed and retried later, nothing about play ever waits on
+  it); idempotent by remembering each record's server-assigned id locally
+  rather than searching for it.
+- **Known, documented security gap:** no auth yet, so collection write
+  rules are public rather than scoped to a real identity — accepted for
+  this step, addressed by Step 5 (Auth) and Step 6 (server-side
+  validation). `list`/`view` are locked to superusers in the meantime, so
+  at least nothing is publicly enumerable.
+- **Verified working, not just written:** this sandbox's network policy
+  blocks GitHub Releases and Docker Hub the same way it blocks the museum
+  APIs (see Step 1 below) — but `proxy.golang.org` is reachable, so
+  PocketBase was compiled from source and actually run locally. Every
+  migration was applied against that real server and re-verified from
+  scratch after fixes (one real bug caught: PocketBase's `required: true`
+  rejects a numeric `0`, which would have broken every new player's
+  starting xp/streak of 0). The full mobile→server sync flow was then
+  exercised end-to-end in a headless-browser Expo session against that
+  same local server — completing a room produced the exact expected
+  server-side records, and reloading the page re-synced without creating
+  duplicates. Only the Dockerfile's `docker build` itself couldn't be
+  verified here (same blocked-registry issue) — see
+  `backend/pocketbase/README.md` for the full story and what's still
+  worth checking on first real use.
+
+### Build Roadmap Step 3 — Local persistence (done)
 
 `mobile/`'s xp/streak/unlocked-room progress and analytics events now
 persist to an on-device SQLite database (`mobile/src/db/`) instead of
@@ -47,8 +92,8 @@ resetting on every reload.
 - **Analytics events logged locally**, per Section 5's event list:
   session_start/session_end (via app background/foreground, with the
   in-progress era/artwork as a drop-off marker), question_answered
-  (correct + time-to-answer), room_completed, streak_broken. No sync queue
-  yet — that's Step 4.
+  (correct + time-to-answer), room_completed, streak_broken. Synced to the
+  backend as of Step 4, below.
 - **Verified working:** typechecks clean, `npm test` passes (schema +
   streak-rollover logic), and — the real test for this step — completing a
   room, then doing a hard page reload, was exercised in a headless browser
@@ -112,8 +157,7 @@ epoch, style, location, and theme.
 
 ### Not started yet
 
-Steps 4–9 of the roadmap, in order: self-hosted PocketBase backend + sync
-queue, auth, server-side gamification hardening, push notifications,
-TestFlight/internal testing, and the optional PostHog analytics upgrade.
-Monetization (Section 8) and the daily play limiter are explicitly deferred
-in the plan itself and untouched here.
+Steps 5–9 of the roadmap, in order: auth, server-side gamification
+hardening, push notifications, TestFlight/internal testing, and the
+optional PostHog analytics upgrade. Monetization (Section 8) and the daily
+play limiter are explicitly deferred in the plan itself and untouched here.

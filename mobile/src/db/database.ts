@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
 import { ERAS } from '../content';
 import type { EraId } from '../types/content';
-import type { NewEvent, ProgressRow, UserRow } from '../types/db';
+import type { NewEvent, ProgressRow, UnsyncedEventRow, UserRow } from '../types/db';
 import { SCHEMA_SQL } from './schema';
 import { computeStreakUpdate, todayDateString } from './streak';
 
@@ -19,9 +19,26 @@ function getDb(): Promise<SQLite.SQLiteDatabase> {
   return dbPromise;
 }
 
+/**
+ * Adds a column to an existing table if it isn't there yet — SQLite has no
+ * `ADD COLUMN IF NOT EXISTS`, and SCHEMA_SQL's `CREATE TABLE IF NOT EXISTS`
+ * only runs once per fresh install, so columns added after Step 3 (the
+ * sync-queue's server_id/synced tracking, Step 4) need this to reach
+ * devices that already have a database on disk.
+ */
+async function ensureColumn(db: SQLite.SQLiteDatabase, table: string, column: string, ddlType: string): Promise<void> {
+  const existingColumns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!existingColumns.some((c) => c.name === column)) {
+    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddlType}`);
+  }
+}
+
 export async function initDatabase(): Promise<void> {
   const db = await getDb();
   await db.execAsync(SCHEMA_SQL);
+  await ensureColumn(db, 'user', 'server_id', 'TEXT');
+  await ensureColumn(db, 'user_progress', 'server_id', 'TEXT');
+  await ensureColumn(db, 'events', 'synced', 'INTEGER NOT NULL DEFAULT 0');
 
   const existing = await db.getFirstAsync<{ id: number }>('SELECT id FROM user WHERE id = 1');
   if (!existing) {
@@ -48,7 +65,10 @@ export async function getUser(): Promise<UserRow> {
     device_uuid: string;
     premium: number;
     unlocked_era_index: number;
-  }>('SELECT xp, streak, last_active_date, device_uuid, premium, unlocked_era_index FROM user WHERE id = 1');
+    server_id: string | null;
+  }>(
+    'SELECT xp, streak, last_active_date, device_uuid, premium, unlocked_era_index, server_id FROM user WHERE id = 1'
+  );
   if (!row) throw new Error('user row missing — call initDatabase() first');
   return {
     xp: row.xp,
@@ -57,15 +77,31 @@ export async function getUser(): Promise<UserRow> {
     deviceUuid: row.device_uuid,
     premium: !!row.premium,
     unlockedEraIndex: row.unlocked_era_index,
+    serverId: row.server_id,
   };
+}
+
+export async function setUserServerId(serverId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE user SET server_id = ? WHERE id = 1', [serverId]);
 }
 
 export async function getProgress(): Promise<ProgressRow[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<{ era_id: EraId; completed: number; best_score: number }>(
-    'SELECT era_id, completed, best_score FROM user_progress'
+  const rows = await db.getAllAsync<{ era_id: EraId; completed: number; best_score: number; server_id: string | null }>(
+    'SELECT era_id, completed, best_score, server_id FROM user_progress'
   );
-  return rows.map((r) => ({ eraId: r.era_id, completed: !!r.completed, bestScore: r.best_score }));
+  return rows.map((r) => ({
+    eraId: r.era_id,
+    completed: !!r.completed,
+    bestScore: r.best_score,
+    serverId: r.server_id,
+  }));
+}
+
+export async function setProgressServerId(eraId: EraId, serverId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE user_progress SET server_id = ? WHERE era_id = ?', [serverId, eraId]);
 }
 
 interface CompleteRoomResult {
@@ -133,4 +169,33 @@ export async function countEvents(): Promise<number> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM events');
   return row?.count ?? 0;
+}
+
+export async function getUnsyncedEvents(limit = 100): Promise<UnsyncedEventRow[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{
+    id: string;
+    device_uuid: string;
+    event_type: UnsyncedEventRow['eventType'];
+    era_id: string | null;
+    artwork_id: string | null;
+    correct: number | null;
+    time_to_answer_ms: number | null;
+    timestamp: string;
+  }>('SELECT * FROM events WHERE synced = 0 ORDER BY timestamp ASC LIMIT ?', [limit]);
+  return rows.map((r) => ({
+    id: r.id,
+    deviceUuid: r.device_uuid,
+    eventType: r.event_type,
+    eraId: r.era_id,
+    artworkId: r.artwork_id,
+    correct: r.correct === null ? null : !!r.correct,
+    timeToAnswerMs: r.time_to_answer_ms,
+    timestamp: r.timestamp,
+  }));
+}
+
+export async function markEventSynced(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE events SET synced = 1 WHERE id = ?', [id]);
 }
