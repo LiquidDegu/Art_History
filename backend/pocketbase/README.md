@@ -1,13 +1,14 @@
 # backend/pocketbase
 
-Self-hosted backend (Build Roadmap Steps 4-5 from
+Self-hosted backend (Build Roadmap Steps 4-6 from
 `../../docs/art-history-app-project-plan.md`): a [PocketBase](https://pocketbase.io)
 server that receives the mobile app's synced progress and analytics
 events, with optional email+password auth (Step 5) so progress can follow
-a person across devices. Content (artworks/artists/categories/questions)
-stays in the mobile app's bundled `content/data.ts` module — per Section 4
-of the plan, only two kinds of data ever need to leave the device:
-progress and analytics events.
+a person across devices, and server-side validation (Step 6) of what a
+client is allowed to claim about its own progress. Content (artworks/
+artists/categories/questions) stays in the mobile app's bundled
+`content/data.ts` module — per Section 4 of the plan, only two kinds of
+data ever need to leave the device: progress and analytics events.
 
 ## Running it
 
@@ -66,6 +67,21 @@ actually be built *and tested* here rather than written blind:
   plain unique index. Fixed with a partial index
   (`WHERE user != ''`), the same pattern PocketBase's own built-in
   `_superusers.email` uniqueness uses.
+- Step 6's validation hooks (`hooks.go`) were tested the same way, request
+  by request: a legitimate room completion (xp +120, streak +1,
+  unlocked_era_index +1 in one PATCH) succeeds; xp decreasing, a
+  non-multiple-of-15 xp value, an implausible xp jump, a streak jump
+  bigger than a reset, `unlocked_era_index` skipping ahead, and
+  self-granting `premium` are each individually confirmed rejected with
+  400. Testing this way caught a real design flaw before it shipped: an
+  initial "at most +1 per update" cap on `streak`/`unlocked_era_index`
+  would have broken a legitimate case — a device offline across several
+  room completions or calendar days, syncing once on reconnect with
+  several eras' worth of progress at once. Fixed by tying the allowed
+  jump to the xp gained in the *same* request instead of a flat +1 cap
+  (see `hooks.go`'s comments), then re-verified that both the legitimate
+  catch-up case *and* the original cheat case (bare `unlocked_era_index`
+  jump with no xp to justify it) resolve correctly.
 - **Not verified here:** the Dockerfile itself. `docker build` gets
   through parsing and starts pulling `golang:1.25-alpine`/`alpine:3.20`,
   then fails on the same blocked-registry error as everything else
@@ -115,12 +131,49 @@ than attempting a real multi-device progress merge.
 - Claimed records: `update` requires `@request.auth.id` to match the
   owning user; `list`/`view` require the same, so a logged-in user can see
   and sync only their own claimed record, never anyone else's.
-- **Still not done:** server-side validation of *what* an authenticated
-  user submits (Step 6 — e.g. nothing stops a logged-in user's client from
-  PATCHing an implausible xp value onto their own claimed record right
-  now, only from touching anyone else's). If a device's local `server_id`
-  is lost while its `device_uuid` survives, the sync queue still just
-  skips that device — same gap as Step 4, not addressed by adding auth.
+- *What* an authenticated user's own client is allowed to submit is now
+  checked too — see "Gamification hardening" below. If a device's local
+  `server_id` is lost while its `device_uuid` survives, the sync queue
+  still just skips that device — same gap as Step 4, not addressed by
+  adding auth.
+
+## Gamification hardening (Step 6) — `hooks.go`
+
+Section 6's anti-cheat note: "since hearts/streak/XP determine
+progression, validate and adjust these server-side rather than trusting
+client-submitted values outright." Steps 4-5 made sure a client can only
+write to *its own* record; this is what checks the values themselves are
+plausible. Go hooks (`OnRecordCreateRequest`/`OnRecordUpdateRequest`),
+not JS `pb_hooks/*.js` — same language as `main.go` already, and
+compile-time checked rather than hoping a JS typo surfaces at runtime.
+Superuser requests (the admin dashboard) always bypass these checks.
+
+On `player`:
+- `xp` can't decrease, must increase in whole `xpPerCorrect` (15)
+  increments, and can't jump by more than a generous per-sync ceiling
+  (`maxPlausibleRoomXP`).
+- `streak` can't decrease except an explicit reset to `1`, and has a
+  generous absolute ceiling (`maxPlausibleStreak`) — but is **not** capped
+  at "+1 per update": a device syncing once after being offline across
+  several calendar days legitimately jumps by more than 1 in one request.
+- `unlocked_era_index` can't decrease, can't exceed the real max (5, six
+  eras), and — instead of a flat "+1 per update" cap, which would have
+  broken the same offline-catch-up scenario — can only advance as far as
+  the xp gained in the *same* update would justify
+  (`eraAdvance*xpPerCorrect <= xpGained`). This is what actually distin­
+  guishes "caught up after being offline" from "PATCHed unlocked_era_index
+  straight to 5 with no xp to show for it."
+- `premium` can't be changed by the record's own owner — only a superuser
+  (future IAP-receipt validation is still deferred, Section 8).
+- `last_active_date` can't be in the future (24h clock-drift tolerance).
+
+On `player_progress`: `best_score` can't decrease and can't exceed a
+generous per-room ceiling (`maxQuestionsPerRoom`).
+
+`xpPerCorrect` and the various ceilings are duplicated from
+`mobile/src/constants/gameBalance.ts` by hand (see `hooks.go`'s top
+comment) rather than shared across the Go/TypeScript boundary — keep them
+in sync if the mobile constants change.
 
 ## Local development without Docker
 
@@ -136,7 +189,7 @@ go run . superuser upsert you@example.com yourpassword
 
 ## pb_hooks/
 
-Empty for now (just `.gitkeep`). Step 6 (server-side gamification
-hardening) is where custom validation hooks belong — e.g. rejecting a
-`player_progress` update whose `best_score` jumped by more than a room's
-question count allows.
+Empty (just `.gitkeep`) — Step 6's validation hooks ended up in `hooks.go`
+(Go) instead, see above. `pb_hooks/` and the `jsvm` plugin registration in
+`main.go` are left in place for JS hooks/migrations in general, not
+specifically earmarked for anything right now.

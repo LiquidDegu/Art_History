@@ -1,6 +1,6 @@
 # mobile
 
-The Expo (React Native + TypeScript) app — Build Roadmap Steps 2-5 from
+The Expo (React Native + TypeScript) app — Build Roadmap Steps 2-6 from
 `../docs/art-history-app-project-plan.md`. Content is local; progress and
 analytics events persist to an on-device SQLite database and sync to the
 self-hosted PocketBase backend in `../backend/pocketbase/`; an optional
@@ -188,11 +188,24 @@ login form, it's what happens to progress when you log in:
   specifically — native iOS/Android get real Keychain/Keystore-backed
   persistence via the same code path, unaffected.
 - **Security model:** see `../backend/pocketbase/README.md`'s "Auth (Step
-  5) and the security model" section — claimed records are now genuinely
+  5) and the security model" section — claimed records are genuinely
   scoped to their owning account (list/view/update all require
   `@request.auth.id` to match), anonymous ones keep Step 4's accepted
-  public-write gap. Validating *what* an authenticated user is allowed to
-  submit (not just *whether* they can) is still Step 6.
+  public-write gap.
+
+## Gamification hardening (Build Roadmap Step 6)
+
+Entirely server-side (`backend/pocketbase/hooks.go`) — nothing in
+`mobile/` changed for this step. The app already only ever sends
+legitimate xp/streak/progress values (they come from
+`db/database.ts`/`db/streak.ts`'s own correct local computation), so
+adding server-side validation of *what* a client submits didn't require
+touching the client at all — confirmed by re-running the exact same
+register → play → adopt end-to-end flow from the Auth section above
+against the newly-hardened server and seeing it pass with zero errors,
+same as before. See the backend README for what's actually checked and
+why an early version of it would have wrongly rejected legitimate
+offline-catch-up play.
 
 ### expo-sqlite on web needs `metro.config.js`
 
@@ -233,10 +246,6 @@ cover the logic Expo's web SQLite backend made slower to iterate on there.
   several artworks (e.g. `The School of Athens`, `Discobolus`) have no theme
   tag rather than a guessed one — same conservative-tagging principle
   `backend/README.md` describes for the pipeline.
-- No server-side validation of *what* a synced xp/streak/score value is
-  (Step 6) — a claimed record's owner can still submit anything through
-  their own authenticated session; only writing to someone *else's*
-  record is blocked.
 - Session restore on boot calls PocketBase's `auth-refresh`, which extends
   the token; there's no proactive re-auth/retry if that single attempt
   fails for a transient reason (e.g. briefly offline right at launch) —

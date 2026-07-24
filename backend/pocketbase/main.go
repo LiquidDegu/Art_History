@@ -1,8 +1,9 @@
-// Self-hosted backend (Build Roadmap Step 4). Schema lives in
-// pb_migrations/ (JS, applied automatically on boot via migratecmd), no
-// custom Go hooks yet. See README.md for how this is built/run and why
-// it's compiled from source rather than downloading a prebuilt release
-// binary.
+// Self-hosted backend (Build Roadmap Steps 4-6). Schema lives in
+// pb_migrations/ (JS, applied automatically on boot via migratecmd);
+// server-side anti-cheat validation lives in hooks.go (Go, not JS — see
+// that file's comment for why). See README.md for how this is built/run
+// and why it's compiled from source rather than downloading a prebuilt
+// release binary.
 package main
 
 import (
@@ -16,9 +17,10 @@ import (
 func main() {
 	app := pocketbase.New()
 
-	// Loads pb_hooks/*.js (Step 6 will add server-side gamification
-	// validation here) and makes the JS migration API (`migrate(...)`,
-	// `new Collection(...)`) available to pb_migrations/*.js.
+	// Loads pb_hooks/*.js (currently empty — Step 6's validation hooks
+	// live in hooks.go instead, see that file) and makes the JS migration
+	// API (`migrate(...)`, `new Collection(...)`) available to
+	// pb_migrations/*.js.
 	jsvm.MustRegister(app, jsvm.Config{
 		MigrationsDir: "pb_migrations",
 		HooksDir:      "pb_hooks",
@@ -31,6 +33,8 @@ func main() {
 		Automigrate: true,
 		Dir:         "pb_migrations",
 	})
+
+	registerHardeningHooks(app)
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)

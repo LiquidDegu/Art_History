@@ -19,8 +19,8 @@ and quizzes, from Antiquity to Modern/Contemporary.
 ```
 docs/                 product plan + reference UI prototype
 backend/               content pipeline (Step 1)
-backend/pocketbase/     self-hosted PocketBase backend, sync queue target + auth (Steps 4-5)
-mobile/                Expo React Native app (Steps 2-5)
+backend/pocketbase/     self-hosted PocketBase backend, sync queue, auth + anti-cheat (Steps 4-6)
+mobile/                Expo React Native app (Steps 2-6)
 ```
 
 ## Progress
@@ -28,7 +28,38 @@ mobile/                Expo React Native app (Steps 2-5)
 Following the plan's Section 0 rule to build in the order given in Section 9
 (Build Roadmap), one step at a time.
 
-### Build Roadmap Step 5 — Auth (in progress)
+### Build Roadmap Step 6 — Gamification hardening (done)
+
+Section 6's anti-cheat note: "validate and adjust [hearts/streak/XP]
+server-side rather than trusting client-submitted values outright." Steps
+4-5 made sure a client can only write to its own record; this is what
+checks the values it writes are plausible — `backend/pocketbase/hooks.go`,
+Go hooks on the `player`/`player_progress` collections (not JS, so it's
+compile-checked and lives next to `main.go`).
+
+- **What's checked:** xp can't decrease and only increases in whole
+  per-question increments, up to a generous per-sync ceiling; streak can't
+  decrease except an explicit reset to 1; `unlocked_era_index` can't
+  decrease or exceed the real max; nobody can grant themselves `premium`;
+  dates can't be from the future. `player_progress.best_score` can't
+  decrease or exceed a generous ceiling.
+- **No mobile code changed for this step** — the app was already only
+  ever sending values it legitimately computed locally, so hardening what
+  the server accepts didn't require touching what the client sends.
+  Confirmed by re-running Step 5's full register → play → adopt
+  end-to-end test against the newly-hardened server: zero errors, same as
+  before.
+- **A real design flaw caught by testing this properly, not just writing
+  it:** the first version capped `streak`/`unlocked_era_index` at
+  "+1 per update." That's wrong — a device offline across several room
+  completions or calendar days legitimately jumps by more than 1 in a
+  single sync on reconnect. Fixed by tying the allowed `unlocked_era_index`
+  jump to the xp gained in the *same* update instead of a flat cap, then
+  re-verified both the legitimate catch-up case and the original cheat
+  (patching `unlocked_era_index` straight to its max with no xp to show
+  for it) resolve correctly. See `backend/pocketbase/README.md`.
+
+### Build Roadmap Step 5 — Auth (done)
 
 Optional email+password login (PocketBase's built-in `users` collection),
 so progress can follow a person across devices instead of staying pinned
@@ -59,9 +90,9 @@ to one anonymous `device_uuid` forever.
   SQL `NULL` — unlike `NULL`, repeated `""`s collide under a plain unique
   index. Fixed with a partial index (`WHERE user != ''`). See
   `backend/pocketbase/README.md`.
-- **Still open (Step 6's job, not this one's):** validating *what* an
-  authenticated user's own client is allowed to submit — right now
-  ownership is enforced, plausibility isn't.
+- Validating *what* an authenticated user's own client is allowed to
+  submit (ownership alone doesn't stop implausible values) is Step 6,
+  above.
 
 ### Build Roadmap Step 4 — Self-hosted backend + sync queue (done)
 
@@ -193,7 +224,7 @@ epoch, style, location, and theme.
 
 ### Not started yet
 
-Steps 6–9 of the roadmap, in order: server-side gamification hardening,
-push notifications, TestFlight/internal testing, and the optional PostHog
-analytics upgrade. Monetization (Section 8) and the daily play limiter are
-explicitly deferred in the plan itself and untouched here.
+Steps 7–9 of the roadmap, in order: push notifications, TestFlight/internal
+testing, and the optional PostHog analytics upgrade. Monetization
+(Section 8) and the daily play limiter are explicitly deferred in the plan
+itself and untouched here.
