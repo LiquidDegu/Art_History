@@ -28,6 +28,32 @@ mobile/                Expo React Native app (Steps 2-7)
 Following the plan's Section 0 rule to build in the order given in Section 9
 (Build Roadmap), one step at a time.
 
+### Build Roadmap Step 8 — Testing / TestFlight / Play internal track (blocked on your accounts)
+
+This is the first step in the roadmap that genuinely can't be completed
+without you: TestFlight and the Play internal track require an Apple
+Developer Program membership and a Google Play Console account,
+respectively — both tied to real identity/billing only you can set up.
+What's prepared without needing those:
+
+- `mobile/app.json`: real app name/slug, plus placeholder
+  `ios.bundleIdentifier`/`android.package` (`com.arthistoryapp.mobile`) —
+  **replace with your own reverse-domain identifier** before building for
+  real, since these must be globally unique and tied to your developer
+  account.
+- `mobile/eas.json`: standard EAS Build profiles, following Expo's
+  documented schema.
+- Confirmed the `eas-cli` tool itself runs from here (`npx eas-cli
+  config` reaches the point of requiring `eas login`) — but logging into
+  an Expo account and actually running a build needs your involvement, so
+  unlike every other piece of infrastructure in this repo, the build
+  config is **not verified by actually running it.**
+
+See `mobile/README.md`'s "Building for TestFlight / Play internal track"
+section for the exact commands to run once you have the accounts, and
+what App Store Connect / Play Console additionally require (screenshots,
+privacy policy, content rating) before a build actually reaches testers.
+
 ### Build Roadmap Step 7 — Push notifications (done)
 
 Local scheduled notifications (`mobile/src/notifications/streakReminder.ts`),
@@ -247,11 +273,15 @@ epoch, style, location, and theme.
   for real once outbound access is available, plus per-source confidence
   notes on query-parameter accuracy for Cleveland and ARTIC.
 
-### Not started yet
+### Step 9 — not started, and not recommended yet
 
-Steps 8–9 of the roadmap: TestFlight/internal testing, and the optional
-PostHog analytics upgrade. Both need things only you hold (an Apple/Google
-developer account for Step 8; a decision on whether Step 9 is worth doing
-at all, since the plan marks it optional/later) — see those steps' notes
-when we get there. Monetization (Section 8 of the plan) and the daily play
-limiter are explicitly deferred in the plan itself and untouched here.
+Section 9 marks this one "optional, later... once usage justifies
+dashboards" — migrating from raw PocketBase events to a self-hosted
+PostHog instance. There's no usage yet (the app hasn't launched), so the
+plan's own stated trigger condition for this step doesn't hold — building
+a self-hosted analytics platform with no users to analyze would be
+speculative work the plan itself says to defer, not a gap. Worth
+revisiting once Step 8 gets real users onto TestFlight/the internal
+track. Monetization (Section 8 of the plan, not to be confused with Build
+Roadmap Step 8 above) and the daily play limiter are explicitly deferred
+in the plan itself and untouched here.

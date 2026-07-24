@@ -277,6 +277,46 @@ play). The actual `expo-sqlite`-backed `database.ts` was still verified for
 real, end-to-end, in the browser (see "Running it" above) — the Node tests
 cover the logic Expo's web SQLite backend made slower to iterate on there.
 
+## Building for TestFlight / Play internal track (Build Roadmap Step 8)
+
+**This step needs an Apple Developer Program membership and/or Google Play
+Console account, which only you hold — I can't create those or submit
+anything on your behalf.** What's actually done here is the preparation
+that doesn't need those credentials:
+
+- `app.json`: real `name`/`slug` ("Art History" / `art-history`, replacing
+  the scaffold defaults), plus `ios.bundleIdentifier` and `android.package`
+  set to `com.arthistoryapp.mobile`. **This is a placeholder** — bundle
+  identifiers must be globally unique and tied to your own developer
+  account, so change it to your own reverse-domain identifier (e.g.
+  `com.yourname.arthistory`) before actually building for submission.
+- `eas.json`: standard EAS Build profiles (`development`/`preview`/
+  `production`) and a `submit.production` entry, following Expo's
+  documented schema.
+- Confirmed `npx eas-cli config` at least runs and reaches the point of
+  requiring `eas login` — i.e. the tool itself works from this sandbox —
+  but couldn't go further: creating/logging into an Expo account (free,
+  but still an account only you should own) and linking a real EAS
+  project needs your involvement, so `eas build` itself was never run
+  here. That means the build config is written against Expo's documented
+  schema but, unlike everything else in this repo, **not verified by
+  actually running it.**
+
+**What you'd do from here**, once you have the accounts:
+```bash
+cd mobile
+npx eas-cli login
+npx eas-cli build:configure          # links this project to a real EAS project id
+npx eas-cli build --platform ios --profile preview      # or android
+npx eas-cli submit --platform ios    # after Apple/Google review setup — see below
+```
+Apple additionally requires an App Store Connect app record (bundle ID,
+app name, screenshots, privacy policy URL, age rating) and Google Play
+requires a Play Console app record (content rating questionnaire, data
+safety form, store listing) before `submit` will actually reach
+TestFlight/the internal track — those are product/legal decisions for you
+to make, not something to fabricate here.
+
 ## Known gaps / next steps
 
 - Heart depletion mid-room exits to the path screen (Section 2, point 11)
