@@ -1,7 +1,7 @@
 import type { Ionicons } from '@expo/vector-icons';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ArtworkCard } from '../components/ArtworkCard';
 import { TopBar } from '../components/TopBar';
@@ -16,12 +16,15 @@ export function QuizScreen({ route, navigation }: Props) {
   const { eraId } = route.params;
   const era = ERAS.find((e) => e.id === eraId)!;
   const questions = useMemo(() => getQuestionsByEra(eraId), [eraId]);
-  const { hearts, xp, streak, resetHearts, loseHeart, completeRoom } = useAppState();
+  const { hearts, xp, streak, resetHearts, loseHeart, completeRoom, logQuestionAnswered, enterQuiz, exitQuiz } =
+    useAppState();
 
   const [qIndex, setQIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
   const [outOfHearts, setOutOfHearts] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const questionStartRef = useRef(Date.now());
 
   useEffect(() => {
     resetHearts();
@@ -30,15 +33,24 @@ export function QuizScreen({ route, navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => exitQuiz, [exitQuiz]);
+
   const question = questions[qIndex];
   const artwork = getArtwork(question.artworkId)!;
   const isAnswered = selected !== null;
   const isLast = qIndex + 1 >= questions.length;
 
+  useEffect(() => {
+    questionStartRef.current = Date.now();
+    enterQuiz(eraId, artwork.id);
+  }, [eraId, artwork.id, enterQuiz]);
+
   function handleSelect(idx: number) {
     if (isAnswered) return;
     setSelected(idx);
-    if (idx === question.correctIndex) {
+    const correct = idx === question.correctIndex;
+    logQuestionAnswered(eraId, artwork.id, correct, Date.now() - questionStartRef.current);
+    if (correct) {
       setCorrectCount((c) => c + 1);
     } else {
       loseHeart();
@@ -46,13 +58,17 @@ export function QuizScreen({ route, navigation }: Props) {
     }
   }
 
-  function handleNext() {
+  async function handleNext() {
+    if (submitting) return;
     if (outOfHearts) {
+      exitQuiz();
       navigation.popToTop();
       return;
     }
     if (isLast) {
-      const xpGained = completeRoom(eraId, correctCount, questions.length);
+      setSubmitting(true);
+      const xpGained = await completeRoom(eraId, correctCount, questions.length);
+      exitQuiz();
       navigation.replace('Results', { eraId, correct: correctCount, total: questions.length, xpGained });
     } else {
       setQIndex((i) => i + 1);
@@ -103,12 +119,12 @@ export function QuizScreen({ route, navigation }: Props) {
       </View>
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.continueButton, !isAnswered && styles.continueButtonDisabled]}
-          disabled={!isAnswered}
+          style={[styles.continueButton, (!isAnswered || submitting) && styles.continueButtonDisabled]}
+          disabled={!isAnswered || submitting}
           onPress={handleNext}
         >
-          <Text style={[styles.continueText, !isAnswered && styles.continueTextDisabled]}>
-            {outOfHearts ? 'Exit Room (Out of Hearts)' : isLast ? 'Finish Room' : 'Continue'}
+          <Text style={[styles.continueText, (!isAnswered || submitting) && styles.continueTextDisabled]}>
+            {submitting ? 'Saving…' : outOfHearts ? 'Exit Room (Out of Hearts)' : isLast ? 'Finish Room' : 'Continue'}
           </Text>
         </TouchableOpacity>
       </View>

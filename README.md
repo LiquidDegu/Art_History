@@ -27,12 +27,41 @@ mobile/   Expo React Native app shell (Step 2)
 Following the plan's Section 0 rule to build in the order given in Section 9
 (Build Roadmap), one step at a time.
 
-### Build Roadmap Step 2 — App shell (in progress)
+### Build Roadmap Step 3 — Local persistence (in progress)
+
+`mobile/`'s xp/streak/unlocked-room progress and analytics events now
+persist to an on-device SQLite database (`mobile/src/db/`) instead of
+resetting on every reload.
+
+- **Persisted:** xp, streak, unlocked-room index, and per-era
+  completed/best_score (Section 5's "User tables"). Hearts stay in-memory
+  by design — Section 6 defines them as "3 per room attempt," not a value
+  that needs to survive a restart.
+- **Daily streak rule, done properly:** increments once per calendar day
+  with a completed room, hard-resets to 1 on a missed day (no streak-freeze
+  item exists yet), stays flat on a same-day replay — replacing Step 2's
+  placeholder (which incremented on every room completion regardless of
+  date). This is unit tested (`mobile/test/streak.test.ts`) against Node's
+  built-in SQLite/test runner, independent of Expo, since it's the part of
+  this step most worth getting exactly right.
+- **Analytics events logged locally**, per Section 5's event list:
+  session_start/session_end (via app background/foreground, with the
+  in-progress era/artwork as a drop-off marker), question_answered
+  (correct + time-to-answer), room_completed, streak_broken. No sync queue
+  yet — that's Step 4.
+- **Verified working:** typechecks clean, `npm test` passes (schema +
+  streak-rollover logic), and — the real test for this step — completing a
+  room, then doing a hard page reload, was exercised in a headless browser
+  session and confirmed xp/streak/completed-room state survived correctly,
+  with zero console errors. See `mobile/README.md` for the `metro.config.js`
+  change this needed (expo-sqlite's web backend needs `.wasm` asset support
+  + COOP/COEP headers that Expo's default Metro config doesn't set).
+
+### Build Roadmap Step 2 — App shell (done)
 
 An Expo (React Native + TypeScript) app in `mobile/` implementing the full
 path → quiz → results loop from the reference prototype, plus new
 browse-by-artist/style/location/theme views the prototype didn't have.
-Runs entirely against local seeded data — no backend or persistence yet.
 
 - **Screens:** Path (gallery path of era nodes), Quiz (multi-question rooms
   with progress bar, heart loss, XP), Results, and a Browse tab (Artists /
@@ -45,15 +74,9 @@ Runs entirely against local seeded data — no backend or persistence yet.
   per-image license verification this session couldn't do, so artwork cards
   render as era-tinted gradient placeholders (same approach the prototype
   itself uses) until real, rights-checked images are wired in.
-- **Verified working:** typechecks clean, and the full loop (answer
-  questions → lose hearts / gain XP → unlock next room → browse an artist's
-  work → view an artwork's detail) was exercised end-to-end in a headless
-  browser session with zero console errors. See `mobile/README.md` for how
-  to run it, including the `--offline` flag needed if your network blocks
-  Expo's own telemetry/update-check hosts.
-- **Not done yet (explicitly out of scope for this step):** local
-  persistence (state resets on reload), the heart-depletion wait/streak-freeze
-  options from Section 2, and the path screen's decorative connecting line.
+- **Not done (explicitly out of scope for this step, picked up in Step 3):**
+  local persistence, the heart-depletion wait/streak-freeze options from
+  Section 2, and the path screen's decorative connecting line.
 
 ### Build Roadmap Step 1 — Content pipeline (in progress)
 
@@ -89,8 +112,8 @@ epoch, style, location, and theme.
 
 ### Not started yet
 
-Steps 3–9 of the roadmap, in order: local SQLite persistence, self-hosted
-PocketBase backend + sync queue, auth, server-side gamification hardening,
-push notifications, TestFlight/internal testing, and the optional PostHog
-analytics upgrade. Monetization (Section 8) and the daily play limiter are
-explicitly deferred in the plan itself and untouched here.
+Steps 4–9 of the roadmap, in order: self-hosted PocketBase backend + sync
+queue, auth, server-side gamification hardening, push notifications,
+TestFlight/internal testing, and the optional PostHog analytics upgrade.
+Monetization (Section 8) and the daily play limiter are explicitly deferred
+in the plan itself and untouched here.

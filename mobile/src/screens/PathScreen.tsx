@@ -20,7 +20,7 @@ const NODE_ICONS = {
 };
 
 export function PathScreen({ navigation }: Props) {
-  const { hearts, xp, streak, unlockedIndex } = useAppState();
+  const { hearts, xp, streak, unlockedIndex, progress } = useAppState();
 
   return (
     <View style={styles.screen}>
@@ -34,6 +34,7 @@ export function PathScreen({ navigation }: Props) {
           <View style={styles.path}>
             {ERAS.map((era, i) => {
               const isUnlocked = i <= unlockedIndex;
+              const isCompleted = !!progress[era.id]?.completed;
               const offset = i % 2 === 0 ? -46 : 46;
               const [from, to] = ERA_COLORS[era.id];
               return (
@@ -46,6 +47,11 @@ export function PathScreen({ navigation }: Props) {
                     {isUnlocked ? (
                       <LinearGradient colors={[from, to]} style={[styles.node, styles.nodeUnlocked]}>
                         <Ionicons name={NODE_ICONS[era.id]} size={30} color="#fff" />
+                        {isCompleted && (
+                          <View style={styles.completedBadge}>
+                            <Ionicons name="checkmark" size={13} color="#fff" />
+                          </View>
+                        )}
                       </LinearGradient>
                     ) : (
                       <View style={[styles.node, styles.nodeLocked]}>
@@ -78,6 +84,11 @@ const styles = StyleSheet.create({
   nodeWrap: { alignItems: 'center', marginVertical: 10 },
   node: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center' },
   nodeUnlocked: { borderWidth: 3, borderColor: COLORS.gold },
+  completedBadge: {
+    position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: COLORS.success, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: COLORS.wallDeep,
+  },
   nodeLocked: { backgroundColor: '#33413A', borderWidth: 3, borderColor: '#4A5A50' },
   nodeLabel: { alignItems: 'center', marginTop: 8, width: 110 },
   nodeName: { fontSize: 13, fontWeight: '600', color: COLORS.cream },
