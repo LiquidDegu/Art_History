@@ -18,13 +18,42 @@ and quizzes, from Antiquity to Modern/Contemporary.
 
 ```
 docs/     product plan + reference UI prototype
-backend/  self-hosted backend + content pipeline (Step 1 so far)
+backend/  self-hosted backend + content pipeline (Step 1)
+mobile/   Expo React Native app shell (Step 2)
 ```
 
 ## Progress
 
 Following the plan's Section 0 rule to build in the order given in Section 9
 (Build Roadmap), one step at a time.
+
+### Build Roadmap Step 2 — App shell (in progress)
+
+An Expo (React Native + TypeScript) app in `mobile/` implementing the full
+path → quiz → results loop from the reference prototype, plus new
+browse-by-artist/style/location/theme views the prototype didn't have.
+Runs entirely against local seeded data — no backend or persistence yet.
+
+- **Screens:** Path (gallery path of era nodes), Quiz (multi-question rooms
+  with progress bar, heart loss, XP), Results, and a Browse tab (Artists /
+  Styles / Locations / Themes → artwork list → artwork detail).
+- **Content:** since the Step 1 pipeline hasn't run against live museum
+  APIs yet (see below), `mobile/src/content/data.ts` hand-curates 48 real,
+  well-documented public-domain artworks (8 per era) with real facts and one
+  quiz question each, applying the same 70-years-since-death copyright rule
+  as `backend/src/config.js`. No images are hotlinked — Section 7 requires
+  per-image license verification this session couldn't do, so artwork cards
+  render as era-tinted gradient placeholders (same approach the prototype
+  itself uses) until real, rights-checked images are wired in.
+- **Verified working:** typechecks clean, and the full loop (answer
+  questions → lose hearts / gain XP → unlock next room → browse an artist's
+  work → view an artwork's detail) was exercised end-to-end in a headless
+  browser session with zero console errors. See `mobile/README.md` for how
+  to run it, including the `--offline` flag needed if your network blocks
+  Expo's own telemetry/update-check hosts.
+- **Not done yet (explicitly out of scope for this step):** local
+  persistence (state resets on reload), the heart-depletion wait/streak-freeze
+  options from Section 2, and the path screen's decorative connecting line.
 
 ### Build Roadmap Step 1 — Content pipeline (in progress)
 
@@ -60,8 +89,7 @@ epoch, style, location, and theme.
 
 ### Not started yet
 
-Steps 2–9 of the roadmap, in order: app shell (RN/Expo, path/quiz/result
-screens + browse-by-category views), local SQLite persistence, self-hosted
+Steps 3–9 of the roadmap, in order: local SQLite persistence, self-hosted
 PocketBase backend + sync queue, auth, server-side gamification hardening,
 push notifications, TestFlight/internal testing, and the optional PostHog
 analytics upgrade. Monetization (Section 8) and the daily play limiter are
