@@ -19,8 +19,8 @@ and quizzes, from Antiquity to Modern/Contemporary.
 ```
 docs/                 product plan + reference UI prototype
 backend/               content pipeline (Step 1)
-backend/pocketbase/     self-hosted PocketBase backend + sync queue target (Step 4)
-mobile/                Expo React Native app (Steps 2-4)
+backend/pocketbase/     self-hosted PocketBase backend, sync queue target + auth (Steps 4-5)
+mobile/                Expo React Native app (Steps 2-5)
 ```
 
 ## Progress
@@ -28,7 +28,42 @@ mobile/                Expo React Native app (Steps 2-4)
 Following the plan's Section 0 rule to build in the order given in Section 9
 (Build Roadmap), one step at a time.
 
-### Build Roadmap Step 4 — Self-hosted backend + sync queue (in progress)
+### Build Roadmap Step 5 — Auth (in progress)
+
+Optional email+password login (PocketBase's built-in `users` collection),
+so progress can follow a person across devices instead of staying pinned
+to one anonymous `device_uuid` forever.
+
+- **Claim vs. adopt, not merge:** logging into an account for the first
+  time ever links the current device's anonymous progress to it (claim);
+  logging into an account that already owns a *different* device's
+  progress downloads and overwrites the current device's local state with
+  the account's instead of trying to merge two separate histories —
+  matching Section 4's "simple last-write-wins is sufficient" rather than
+  building real multi-device merge, which the plan doesn't ask for.
+- **Ownership is enforced server-side, not just assumed client-side:**
+  once claimed, a `player`/`player_progress` record's `list`/`view`/
+  `update` rules require `@request.auth.id` to match its owner — checked
+  by testing an unauthenticated request against a *just-claimed* record
+  and confirming it's rejected, not by reading the rule and assuming.
+- **Verified with two simulated devices against a real server:** device A
+  played a room and registered; device B (separate local anonymous
+  progress, never played) logged into the same account and immediately
+  showed device A's exact xp/streak/completed-room state on its own Path
+  screen. The server afterwards showed exactly one account and exactly
+  one claimed player record — device B's original record left untouched,
+  not merged or duplicated.
+- **One real bug this testing caught:** a naive `UNIQUE INDEX` on the new
+  `player.user` relation broke after the *second* anonymous player record
+  ever created, because PocketBase stores an unset relation as `""`, not
+  SQL `NULL` — unlike `NULL`, repeated `""`s collide under a plain unique
+  index. Fixed with a partial index (`WHERE user != ''`). See
+  `backend/pocketbase/README.md`.
+- **Still open (Step 6's job, not this one's):** validating *what* an
+  authenticated user's own client is allowed to submit — right now
+  ownership is enforced, plausibility isn't.
+
+### Build Roadmap Step 4 — Self-hosted backend + sync queue (done)
 
 A self-hosted [PocketBase](https://pocketbase.io) server (`backend/pocketbase/`)
 now receives the mobile app's progress and analytics events, per Section 4:
@@ -51,11 +86,12 @@ and analytics events."
   failure is swallowed and retried later, nothing about play ever waits on
   it); idempotent by remembering each record's server-assigned id locally
   rather than searching for it.
-- **Known, documented security gap:** no auth yet, so collection write
-  rules are public rather than scoped to a real identity — accepted for
-  this step, addressed by Step 5 (Auth) and Step 6 (server-side
-  validation). `list`/`view` are locked to superusers in the meantime, so
-  at least nothing is publicly enumerable.
+- **Known, documented security gap at the time:** no auth yet, so
+  collection write rules were public rather than scoped to a real
+  identity. `list`/`view` were locked to superusers in the meantime, so at
+  least nothing was publicly enumerable. Step 5, above, is what actually
+  closes this for claimed accounts; anonymous (not-yet-logged-in) records
+  keep the same accepted gap by design.
 - **Verified working, not just written:** this sandbox's network policy
   blocks GitHub Releases and Docker Hub the same way it blocks the museum
   APIs (see Step 1 below) — but `proxy.golang.org` is reachable, so
@@ -157,7 +193,7 @@ epoch, style, location, and theme.
 
 ### Not started yet
 
-Steps 5–9 of the roadmap, in order: auth, server-side gamification
-hardening, push notifications, TestFlight/internal testing, and the
-optional PostHog analytics upgrade. Monetization (Section 8) and the daily
-play limiter are explicitly deferred in the plan itself and untouched here.
+Steps 6–9 of the roadmap, in order: server-side gamification hardening,
+push notifications, TestFlight/internal testing, and the optional PostHog
+analytics upgrade. Monetization (Section 8) and the daily play limiter are
+explicitly deferred in the plan itself and untouched here.

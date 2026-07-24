@@ -28,8 +28,14 @@ interface ProgressRecord {
   id: string;
 }
 
-/** Creates or updates this device's `player` record; returns its server id, or null if it can't be resolved right now. */
-async function ensurePlayerSynced(): Promise<string | null> {
+/**
+ * Creates or updates this device's `player` record; returns its server id,
+ * or null if it can't be resolved right now. Exported for
+ * `../auth/authClient.ts`'s claim flow to reuse — claiming an account
+ * needs the local player to have a server_id before it can PATCH `user`
+ * onto it, same precondition syncNow() already handles here.
+ */
+export async function ensurePlayerSynced(): Promise<string | null> {
   const user = await getUser();
 
   if (user.serverId) {

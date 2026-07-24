@@ -1,10 +1,10 @@
 // Thin REST wrapper around the PocketBase collections created in
-// backend/pocketbase/pb_migrations/ (player / player_progress / events).
-// No PocketBase SDK dependency — the REST surface is tiny enough (create +
-// update, on three collections) that a hand-rolled fetch wrapper is less
-// surface area than pulling in `pocketbase` the npm package for it, and
-// this is deliberately anonymous/unauthenticated (Step 5 adds auth) so
-// there's no token/session handling to reuse from the SDK anyway.
+// backend/pocketbase/pb_migrations/ (player / player_progress / events /
+// the built-in users auth collection). No PocketBase SDK dependency — the
+// REST surface used here (create, update, list, password auth) is small
+// enough that a hand-rolled fetch wrapper is less surface area than
+// pulling in the `pocketbase` npm package for it.
+import { getSession } from '../auth/session';
 import { POCKETBASE_URL } from './config';
 
 const REQUEST_TIMEOUT_MS = 8000;
@@ -34,9 +34,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const session = getSession();
+    if (session) headers.Authorization = session.token;
+
     const res = await fetch(`${POCKETBASE_URL}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
@@ -57,6 +61,22 @@ export function createRecord<T>(collection: string, body: unknown): Promise<T> {
 
 export function updateRecord<T>(collection: string, id: string, body: unknown): Promise<T> {
   return request<T>('PATCH', `/api/collections/${collection}/records/${id}`, body);
+}
+
+export function listRecords<T>(collection: string, filter: string): Promise<{ items: T[]; totalItems: number }> {
+  return request('GET', `/api/collections/${collection}/records?filter=${encodeURIComponent(filter)}&perPage=200`);
+}
+
+export function viewRecord<T>(collection: string, id: string): Promise<T> {
+  return request<T>('GET', `/api/collections/${collection}/records/${id}`);
+}
+
+export function authWithPassword<T>(collection: string, identity: string, password: string): Promise<T> {
+  return request<T>('POST', `/api/collections/${collection}/auth-with-password`, { identity, password });
+}
+
+export function authRefresh<T>(collection: string): Promise<T> {
+  return request<T>('POST', `/api/collections/${collection}/auth-refresh`);
 }
 
 /** True if `err` is a PocketBase validation error on `field` with `code` (e.g. "validation_not_unique"). */

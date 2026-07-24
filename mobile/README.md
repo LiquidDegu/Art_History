@@ -1,9 +1,10 @@
 # mobile
 
-The Expo (React Native + TypeScript) app — Build Roadmap Steps 2-4 from
+The Expo (React Native + TypeScript) app — Build Roadmap Steps 2-5 from
 `../docs/art-history-app-project-plan.md`. Content is local; progress and
 analytics events persist to an on-device SQLite database and sync to the
-self-hosted PocketBase backend in `../backend/pocketbase/`.
+self-hosted PocketBase backend in `../backend/pocketbase/`; an optional
+email+password account (Step 5) carries that progress across devices.
 
 ## Running it
 
@@ -49,9 +50,11 @@ src/
   sync/config.ts            PocketBase server URL (EXPO_PUBLIC_POCKETBASE_URL)
   sync/pocketbaseClient.ts  minimal fetch wrapper around the PocketBase REST API
   sync/syncQueue.ts         syncNow(): batch-uploads unsynced progress/events (Section 4)
-  state/AppState.tsx       xp/streak/unlocked/progress context, backed by SQLite; hearts stay in-memory
-  navigation/              React Navigation: bottom tabs (Path / Browse), each a native stack
-  screens/                 Path, Quiz, Results, BrowseHome, BrowseList, BrowseArtworks, ArtworkDetail
+  auth/session.ts          in-memory current-token holder (breaks an import cycle, see below)
+  auth/authClient.ts        register/login/logout + the claim-or-adopt reconciliation (Section 5)
+  state/AppState.tsx       xp/streak/unlocked/progress/session context, backed by SQLite; hearts stay in-memory
+  navigation/              React Navigation: bottom tabs (Path / Browse / Account), each a native stack
+  screens/                 Path, Quiz, Results, BrowseHome, BrowseList, BrowseArtworks, ArtworkDetail, Account
   components/              TopBar, ArtworkCard
 test/                      Node --test suite for db/schema.ts and db/streak.ts (see below)
 ```
@@ -143,13 +146,53 @@ dedicated connectivity-change listener; those three triggers cover
   `question_answered` + 1 `room_completed` + session events — then a page
   reload in the same browser context re-synced without creating a single
   duplicate record. See `../backend/pocketbase/README.md`.
-- **Known gap, matching the server's:** if a device's `server_id` is lost
-  while its `device_uuid` survives, `ensurePlayerSynced()` currently just
-  skips syncing that device rather than guessing — there's no way to look
-  up "the player record for this device_uuid" without auth, since
-  `player`'s `view`/`list` rules are superuser-only by design (see the
-  backend README's security-gap section). Step 5 (Auth) is where this gets
-  a real answer.
+- **Known gap:** if a device's `server_id` is lost while its `device_uuid`
+  survives, `ensurePlayerSynced()` still just skips syncing that device
+  rather than guessing. Logging in (below) doesn't fix this specific case —
+  it only reconciles at the moment of login, not continuously.
+
+## Auth (Build Roadmap Step 5)
+
+Optional email+password login (`src/auth/authClient.ts`), via PocketBase's
+built-in `users` collection — playing without an account works exactly as
+it did in Step 4, nothing here is required. The interesting part isn't the
+login form, it's what happens to progress when you log in:
+
+- **First login for an account → claim.** The device's local (anonymous)
+  `player` record gets its `user` field set to the new account — that
+  device's progress *becomes* the account's progress. No data is lost or
+  recomputed; the local SQLite state doesn't change at all.
+- **Logging into an account that already owns a *different* player record
+  (i.e. a second device) → adopt.** Rather than attempting to merge two
+  separate anonymous histories — a much bigger feature than Section 4's
+  "simple last-write-wins is sufficient" calls for — this device downloads
+  the account's existing server state and **overwrites** its local
+  xp/streak/progress with it. The second device's pre-login local progress
+  is superseded, not combined. `db/database.ts`'s `overwriteFromServer()`
+  is the only place local state is written from a server response instead
+  of the other way around.
+- **Verified with two real devices, not assumed.** Two separate browser
+  profiles stood in for two physical devices against the same local
+  PocketBase server: device A played a full room, then registered; device
+  B (its own local anonymous progress, untouched) logged into the *same*
+  account and its Path/Account screens immediately showed device A's exact
+  xp/streak/completed-room state. Checking the server directly afterwards
+  confirmed exactly one account and exactly one *claimed* player record —
+  device B's original anonymous record was left orphaned, not merged or
+  duplicated. See `../backend/pocketbase/README.md` for the bug this
+  testing caught server-side (a unique-index gotcha with empty relations).
+- **expo-secure-store has no web implementation.** It throws rather than
+  no-oping when you call it on `expo start --web`, which would otherwise
+  crash the app on boot. Every call in `authClient.ts` is wrapped in
+  try/catch and degrades to "session doesn't survive a reload" on web
+  specifically — native iOS/Android get real Keychain/Keystore-backed
+  persistence via the same code path, unaffected.
+- **Security model:** see `../backend/pocketbase/README.md`'s "Auth (Step
+  5) and the security model" section — claimed records are now genuinely
+  scoped to their owning account (list/view/update all require
+  `@request.auth.id` to match), anonymous ones keep Step 4's accepted
+  public-write gap. Validating *what* an authenticated user is allowed to
+  submit (not just *whether* they can) is still Step 6.
 
 ### expo-sqlite on web needs `metro.config.js`
 
@@ -190,6 +233,11 @@ cover the logic Expo's web SQLite backend made slower to iterate on there.
   several artworks (e.g. `The School of Athens`, `Discobolus`) have no theme
   tag rather than a guessed one — same conservative-tagging principle
   `backend/README.md` describes for the pipeline.
-- No auth yet — the sync queue is anonymous/device-scoped (Step 5).
-- No server-side validation of synced xp/streak/scores (Step 6) — the
-  server currently trusts whatever the client sends.
+- No server-side validation of *what* a synced xp/streak/score value is
+  (Step 6) — a claimed record's owner can still submit anything through
+  their own authenticated session; only writing to someone *else's*
+  record is blocked.
+- Session restore on boot calls PocketBase's `auth-refresh`, which extends
+  the token; there's no proactive re-auth/retry if that single attempt
+  fails for a transient reason (e.g. briefly offline right at launch) —
+  the user just appears logged out until they log in again.

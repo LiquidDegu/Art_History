@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { AccountScreen } from '../screens/AccountScreen';
 import { ArtworkDetailScreen } from '../screens/ArtworkDetailScreen';
 import { BrowseArtworksScreen } from '../screens/BrowseArtworksScreen';
 import { BrowseHomeScreen } from '../screens/BrowseHomeScreen';
@@ -79,6 +80,14 @@ export function RootNavigator() {
           options={{
             title: 'Browse',
             tabBarIcon: ({ color, size }) => <Ionicons name="grid" size={size} color={color} />,
+          }}
+        />
+        <Tab.Screen
+          name="AccountTab"
+          component={AccountScreen}
+          options={{
+            title: 'Account',
+            tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} />,
           }}
         />
       </Tab.Navigator>

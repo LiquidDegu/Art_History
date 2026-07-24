@@ -19,4 +19,5 @@ export type BrowseStackParamList = {
 export type RootTabParamList = {
   PathTab: NavigatorScreenParams<PathStackParamList>;
   BrowseTab: NavigatorScreenParams<BrowseStackParamList>;
+  AccountTab: undefined;
 };

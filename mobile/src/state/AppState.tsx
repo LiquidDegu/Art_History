@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState as RNAppState, type AppStateStatus } from 'react-native';
+import * as authClient from '../auth/authClient';
+import type { AuthSession } from '../auth/authClient';
 import { HEARTS_START, XP_PER_CORRECT } from '../constants/gameBalance';
 import { getProgress, getUser, initDatabase, logEvent, persistRoomCompletion } from '../db/database';
 import { syncNow } from '../sync/syncQueue';
@@ -17,6 +19,13 @@ import type { ProgressRow } from '../types/db';
 // boot, on every foreground resume, and after each room completion. Sync
 // is fire-and-forget and never awaited by the UI: offline play must never
 // be blocked or slowed down by it.
+//
+// Build Roadmap Step 5: optional email+password auth (../auth/authClient.ts)
+// links a device's progress to an account for cross-device continuity. A
+// successful login/register can rewrite local xp/streak/progress (the
+// "adopt" case in authClient's module comment), so those calls reload
+// local state into this context afterwards rather than assuming nothing
+// changed.
 
 interface QuizContext {
   eraId: EraId;
@@ -37,6 +46,12 @@ interface AppState {
   logQuestionAnswered: (eraId: EraId, artworkId: string, correct: boolean, timeToAnswerMs: number) => void;
   enterQuiz: (eraId: EraId, artworkId: string) => void;
   exitQuiz: () => void;
+  session: AuthSession | null;
+  authBusy: boolean;
+  authError: string | null;
+  register: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AppStateContext = createContext<AppState | null>(null);
@@ -48,21 +63,31 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [streak, setStreak] = useState(0);
   const [unlockedIndex, setUnlockedIndex] = useState(0);
   const [progress, setProgress] = useState<Partial<Record<EraId, ProgressRow>>>({});
+  const [session, setSessionState] = useState<AuthSession | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Mutable, not state: read by the background/foreground listener without
   // needing to resubscribe on every question.
   const quizContextRef = useRef<QuizContext | null>(null);
 
+  async function loadLocalState(): Promise<void> {
+    const [user, progressRows] = await Promise.all([getUser(), getProgress()]);
+    setXp(user.xp);
+    setStreak(user.streak);
+    setUnlockedIndex(user.unlockedEraIndex);
+    setProgress(Object.fromEntries(progressRows.map((p) => [p.eraId, p])));
+  }
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       await initDatabase();
-      const [user, progressRows] = await Promise.all([getUser(), getProgress()]);
+      const restored = await authClient.restoreSession();
       if (cancelled) return;
-      setXp(user.xp);
-      setStreak(user.streak);
-      setUnlockedIndex(user.unlockedEraIndex);
-      setProgress(Object.fromEntries(progressRows.map((p) => [p.eraId, p])));
+      setSessionState(restored);
+      await loadLocalState();
+      if (cancelled) return;
       setReady(true);
       await logEvent({ eventType: 'session_start' });
       void syncNow();
@@ -129,8 +154,43 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       exitQuiz: () => {
         quizContextRef.current = null;
       },
+      session,
+      authBusy,
+      authError,
+      register: async (email, password) => {
+        setAuthBusy(true);
+        setAuthError(null);
+        try {
+          const result = await authClient.register(email, password);
+          setSessionState(result);
+          await loadLocalState();
+        } catch (err) {
+          setAuthError(err instanceof Error ? err.message : 'Registration failed');
+          throw err;
+        } finally {
+          setAuthBusy(false);
+        }
+      },
+      login: async (email, password) => {
+        setAuthBusy(true);
+        setAuthError(null);
+        try {
+          const result = await authClient.login(email, password);
+          setSessionState(result);
+          await loadLocalState();
+        } catch (err) {
+          setAuthError(err instanceof Error ? err.message : 'Login failed');
+          throw err;
+        } finally {
+          setAuthBusy(false);
+        }
+      },
+      logout: async () => {
+        await authClient.logout();
+        setSessionState(null);
+      },
     }),
-    [ready, hearts, xp, streak, unlockedIndex, progress]
+    [ready, hearts, xp, streak, unlockedIndex, progress, session, authBusy, authError]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

@@ -1,11 +1,13 @@
 # backend/pocketbase
 
-Self-hosted backend (Build Roadmap Step 4 from `../../docs/art-history-app-project-plan.md`):
-a [PocketBase](https://pocketbase.io) server that receives the mobile app's
-synced progress and analytics events. Content (artworks/artists/categories/
-questions) stays in the mobile app's bundled `content/data.ts` module — per
-Section 4 of the plan, only two kinds of data ever need to leave the
-device: progress and analytics events.
+Self-hosted backend (Build Roadmap Steps 4-5 from
+`../../docs/art-history-app-project-plan.md`): a [PocketBase](https://pocketbase.io)
+server that receives the mobile app's synced progress and analytics
+events, with optional email+password auth (Step 5) so progress can follow
+a person across devices. Content (artworks/artists/categories/questions)
+stays in the mobile app's bundled `content/data.ts` module — per Section 4
+of the plan, only two kinds of data ever need to leave the device:
+progress and analytics events.
 
 ## Running it
 
@@ -49,6 +51,21 @@ actually be built *and tested* here rather than written blind:
   `player_progress` records and synced all 8 `question_answered` events
   plus `room_completed`, and reloading the page reused the same server
   record (no duplicates) rather than creating a second one.
+- Step 5's auth/claim/adopt flow was tested the same way, with two
+  separate browser profiles standing in for two devices: device A played
+  a room, then registered — its anonymous progress got linked to the new
+  account. Device B (its own local anonymous progress, never played)
+  logged into that same account and *adopted* device A's server state
+  (120 XP, streak 1, Antiquity complete) rather than merging — confirmed
+  by checking the actual PocketBase records afterwards: exactly one
+  account, exactly one *claimed* player record, device B's original
+  anonymous record left untouched and orphaned. This also caught a real
+  bug: a naive `UNIQUE INDEX` on `player.user` broke after the *second*
+  anonymous player record, because PocketBase stores an unset relation as
+  `""`, not SQL `NULL` — unlike `NULL`, multiple `""`s collide under a
+  plain unique index. Fixed with a partial index
+  (`WHERE user != ''`), the same pattern PocketBase's own built-in
+  `_superusers.email` uniqueness uses.
 - **Not verified here:** the Dockerfile itself. `docker build` gets
   through parsing and starts pulling `golang:1.25-alpine`/`alpine:3.20`,
   then fails on the same blocked-registry error as everything else
@@ -65,35 +82,45 @@ actually be built *and tested* here rather than written blind:
 
 ## Schema (`pb_migrations/`)
 
-Three collections, applied in order:
+Five migrations, applied in order:
 
-| Collection | Maps to Section 5 | Notes |
+| Migration | Maps to Section 5 | Notes |
 |---|---|---|
-| `player` | `users` table (xp/streak/last_active_date/premium) | Named `player`, not `users` — PocketBase reserves `users` for its own built-in auth collection (email+password required), and this step is deliberately pre-auth. `hearts` is present for schema fidelity but nothing syncs it yet (stays client-only, see `../../mobile/README.md`). |
-| `player_progress` | `user_progress` table | Relation to `player`, unique on `(player, era_id)`. |
-| `events` | `events` table | Unique on `client_event_id` — the mobile app's local event id, reused as an idempotency key so a retried upload can't create a duplicate. |
+| `1700000001` `player` | `users` table (xp/streak/last_active_date/premium) | Named `player`, not `users` — PocketBase reserves `users` for its own built-in auth collection. `hearts` is present for schema fidelity but nothing syncs it yet (stays client-only, see `../../mobile/README.md`). |
+| `1700000002` `player_progress` | `user_progress` table | Relation to `player`, unique on `(player, era_id)`. |
+| `1700000003` `events` | `events` table | Unique on `client_event_id` — the mobile app's local event id, reused as an idempotency key so a retried upload can't create a duplicate. |
+| `1700000004` add auth to `player` | — | Adds a nullable `user` relation to PocketBase's built-in `users` auth collection, a partial-unique index (`WHERE user != ''`, see above), and auth-aware list/view/update rules. |
+| `1700000005` auth rules on `player_progress` | — | Same ownership rules, one hop through the `player` relation. |
 
-## Known limitation: no auth yet (Step 5)
+## Auth (Step 5) and the security model
 
-Every collection's `create`/`update` rules are public (empty-string rule,
-not `null`) — there's no `@request.auth` to scope by pre-auth, so anyone
-who can reach the server can write *a* record. This is an accepted,
-deliberate gap for this step, not an oversight:
+Email+password auth via PocketBase's built-in `users` collection
+(`/api/collections/users/records` to register, `/auth-with-password` to
+log in — both plain PocketBase REST, nothing custom). `player` records
+stay anonymous (`user` unset) until a device's owner logs in, at which
+point the mobile app either **claims** the local device's record (first
+login ever for that account) or **adopts** the account's existing
+server-side state (logging into an account that already owns a *different*
+player record, e.g. a second device) — see
+`../../mobile/src/auth/authClient.ts`'s module comment and
+`../../mobile/README.md` for the full claim-vs-adopt reasoning, which
+follows Section 4's "simple last-write-wins is sufficient" stance rather
+than attempting a real multi-device progress merge.
 
-- `list`/`view` are locked to superusers on every collection, so at least
-  no one can enumerate or read other devices' data — the sync client never
-  needs to look records up by filter anyway, since it remembers the
-  server-assigned id from its own create response and blind-PATCHes that
-  from then on.
-- Real per-device write authorization needs Step 5 (Auth) to exist at all;
-  Step 6 (gamification hardening) is where server-side validation of
-  submitted xp/streak values against what's actually plausible belongs —
-  right now the server trusts whatever the client sends.
-- If a device's local `server_id` gets lost while its `device_uuid`
-  survives (e.g. a partial local data reset), the sync queue currently just
-  skips that device rather than guessing — see the comment in
-  `../../mobile/src/sync/syncQueue.ts`. Reconciling that properly needs
-  Step 5 too.
+**Current access rules, and what's still open:**
+- Anonymous (unclaimed) `player`/`player_progress` records: `create`/
+  `update` are public, `list`/`view` are superuser-only. Same accepted gap
+  as Step 4 — anyone who can reach the server can write *an* anonymous
+  record, but can't enumerate or read others'.
+- Claimed records: `update` requires `@request.auth.id` to match the
+  owning user; `list`/`view` require the same, so a logged-in user can see
+  and sync only their own claimed record, never anyone else's.
+- **Still not done:** server-side validation of *what* an authenticated
+  user submits (Step 6 — e.g. nothing stops a logged-in user's client from
+  PATCHing an implausible xp value onto their own claimed record right
+  now, only from touching anyone else's). If a device's local `server_id`
+  is lost while its `device_uuid` survives, the sync queue still just
+  skips that device — same gap as Step 4, not addressed by adding auth.
 
 ## Local development without Docker
 

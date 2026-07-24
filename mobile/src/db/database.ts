@@ -86,6 +86,43 @@ export async function setUserServerId(serverId: string): Promise<void> {
   await db.runAsync('UPDATE user SET server_id = ? WHERE id = 1', [serverId]);
 }
 
+interface ServerUserState {
+  xp: number;
+  streak: number;
+  lastActiveDate: string | null;
+  unlockedEraIndex: number;
+  serverId: string;
+}
+
+interface ServerProgressState {
+  eraId: EraId;
+  completed: boolean;
+  bestScore: number;
+  serverId: string;
+}
+
+/**
+ * Overwrites local xp/streak/progress with an account's server-side state —
+ * used by ../auth/authClient.ts when logging into a device that already
+ * belongs to a *different* claimed player record (Step 5's "adopt, don't
+ * merge" rule for a second device: see mobile/README.md). Not used for the
+ * device that originates a claim — that direction is local-wins, handled
+ * by syncNow()'s normal PATCH-up flow instead.
+ */
+export async function overwriteFromServer(user: ServerUserState, progress: ServerProgressState[]): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'UPDATE user SET xp = ?, streak = ?, last_active_date = ?, unlocked_era_index = ?, server_id = ? WHERE id = 1',
+    [user.xp, user.streak, user.lastActiveDate, user.unlockedEraIndex, user.serverId]
+  );
+  for (const p of progress) {
+    await db.runAsync(
+      'UPDATE user_progress SET completed = ?, best_score = ?, server_id = ? WHERE era_id = ?',
+      [p.completed ? 1 : 0, p.bestScore, p.serverId, p.eraId]
+    );
+  }
+}
+
 export async function getProgress(): Promise<ProgressRow[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<{ era_id: EraId; completed: number; best_score: number; server_id: string | null }>(
