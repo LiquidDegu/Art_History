@@ -3,6 +3,63 @@
 A Duolingo-style mobile app teaching art history through bite-sized lessons
 and quizzes, from Antiquity to Modern/Contemporary.
 
+## Current state & what to do next
+
+**Built and verified against real running infrastructure** (not just
+written): Build Roadmap Steps 2–7 — the Expo app shell, local SQLite
+persistence, a self-hosted PocketBase backend with a sync queue, optional
+cross-device auth, server-side anti-cheat validation, and local
+streak-reminder notifications. Step 1 (content pipeline) is code-complete
+and unit-tested but has never run against live data. Step 8 (store
+submission) is prepped but blocked. Step 9 (analytics) is intentionally
+not started. Full detail on every step, including what was tested and how,
+is in "Progress" below.
+
+**Open TODOs — things that need you, specifically:**
+
+1. **Run the Step 1 content pipeline for real.** This sandbox's network
+   policy blocks the museum APIs, so it's only ever run against fixtures.
+   From somewhere with normal network access:
+   ```bash
+   cd backend && node scripts/import_content.js --sources=met,cleveland,artic --limit=40 --out=./data/seed
+   ```
+   See `backend/README.md` for details and per-source confidence notes.
+2. **Decide what to do with that output.** `mobile/src/content/data.ts`
+   currently ships 48 hand-curated artworks (real facts, no images —
+   see `mobile/README.md`'s "Seed content" section for why) as a
+   stand-in. Once the pipeline has run, decide whether to replace that
+   with the real museum data + images, keep the curated set, or merge —
+   this is a product call, not something to silently pick.
+3. **Deploy `backend/pocketbase` somewhere real.** It's only ever been
+   run locally in this sandbox. `cp .env.example .env` with real secrets,
+   then `docker compose up -d --build` on an actual server — see
+   `backend/pocketbase/README.md`. Note the Dockerfile itself was never
+   actually built here either (same network block), so double-check the
+   first `docker compose up --build` on a real machine.
+4. **Point the app at that real server**: set `EXPO_PUBLIC_POCKETBASE_URL`
+   (`mobile/.env.example`) before building for real users.
+5. **Replace the placeholder bundle identifier.** `mobile/app.json`'s
+   `com.arthistoryapp.mobile` is a stand-in — swap in your own
+   reverse-domain identifier before building for submission.
+6. **Get an Apple Developer Program membership and/or Google Play Console
+   account**, then follow `mobile/README.md`'s "Building for TestFlight /
+   Play internal track" section — this is the one step in the roadmap I
+   can't move forward without you.
+7. **Sanity-check push notifications on a real device.** The streak
+   reminder (`mobile/src/notifications/streakReminder.ts`) is written
+   against `expo-notifications`' real API but was never confirmed firing
+   on an actual iOS/Android device or simulator — none was available here.
+8. **Revisit Step 9** (self-hosted PostHog analytics) once there are real
+   users on TestFlight/internal track to actually analyze — the plan
+   itself gates this on "once usage justifies dashboards."
+
+**Smaller, non-blocking gaps** (documented in `mobile/README.md`'s "Known
+gaps" section): hearts don't regenerate over time — a deliberate
+game-balance choice confirmed with you, not an oversight; a handful of
+artworks have no `theme` tag because I wasn't confident enough in one to
+guess; session restore doesn't retry after a single transient
+`auth-refresh` failure.
+
 ## Documentation
 
 - [`docs/art-history-app-project-plan.md`](docs/art-history-app-project-plan.md)
