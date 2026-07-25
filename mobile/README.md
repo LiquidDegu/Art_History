@@ -320,14 +320,16 @@ to make, not something to fabricate here.
 ## Known gaps / next steps
 
 - Heart depletion mid-room exits to the path screen (Section 2, point 11)
-  but has no wait/streak-freeze/heart-item options yet — those need
-  server-side hearts regeneration (Step 6), out of scope for the app shell.
-- The path screen's connecting line between room nodes (present in the
-  prototype's CSS) isn't ported; the nodes/labels/lock states are.
+  but has no wait/streak-freeze/heart-item options yet. This is a
+  deliberate choice, not an oversight: it would mean reworking hearts from
+  the current "3 fresh per room attempt" design into a persistent,
+  regenerating pool, which is a real game-balance/architecture decision —
+  asked about explicitly and deferred for now.
 - Style/theme tags are only attached where I could state them confidently;
-  several artworks (e.g. `The School of Athens`, `Discobolus`) have no theme
-  tag rather than a guessed one — same conservative-tagging principle
-  `backend/README.md` describes for the pipeline.
+  several artworks (e.g. `The School of Athens`, `Discobolus`, `The
+  Scream`) have no theme tag rather than a guessed one — same
+  conservative-tagging principle `backend/README.md` describes for the
+  pipeline.
 - Session restore on boot calls PocketBase's `auth-refresh`, which extends
   the token; there's no proactive re-auth/retry if that single attempt
   fails for a transient reason (e.g. briefly offline right at launch) —
