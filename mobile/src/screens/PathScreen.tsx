@@ -32,6 +32,11 @@ export function PathScreen({ navigation }: Props) {
             <Text style={styles.title}>Six Rooms, One Story</Text>
           </View>
           <View style={styles.path}>
+            <LinearGradient
+              colors={[`${COLORS.goldLight}33`, `${COLORS.goldLight}88`]}
+              style={styles.connectingLine}
+              pointerEvents="none"
+            />
             {ERAS.map((era, i) => {
               const isUnlocked = i <= unlockedIndex;
               const isCompleted = !!progress[era.id]?.completed;
@@ -80,8 +85,9 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', marginBottom: 26 },
   eyebrow: { fontFamily: 'monospace', fontSize: 11, letterSpacing: 2, color: COLORS.goldLight, textTransform: 'uppercase' },
   title: { fontSize: 22, color: COLORS.cream, fontWeight: '600', marginTop: 4 },
-  path: { alignItems: 'center', gap: 6 },
-  nodeWrap: { alignItems: 'center', marginVertical: 10 },
+  path: { alignItems: 'center', gap: 6, position: 'relative' },
+  connectingLine: { position: 'absolute', top: 30, bottom: 30, left: '50%', width: 2, marginLeft: -1 },
+  nodeWrap: { alignItems: 'center', marginVertical: 10, zIndex: 1 },
   node: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center' },
   nodeUnlocked: { borderWidth: 3, borderColor: COLORS.gold },
   completedBadge: {

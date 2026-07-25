@@ -365,7 +365,7 @@ addArtwork({
 addArtwork({
   title: 'The Dream', artistName: 'Henri Rousseau', artistBirth: 1844, artistDeath: 1910,
   artistNationality: 'French', era: 'modern', year: 1910, medium: 'painting', location: 'MoMA, New York',
-  style: 'Naïve Art', rightsSource: 'Public domain — antiquity',
+  style: 'Naïve Art', theme: 'Landscape', rightsSource: 'Public domain — antiquity',
 });
 addArtwork({
   title: 'Composition VIII', artistName: 'Wassily Kandinsky', artistBirth: 1866, artistDeath: 1944,
